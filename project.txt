@@ -1,0 +1,787 @@
+# MASTER BUILD PROMPT — CUSTOMIZABLE PERSONAL BROWSER WORKSPACE EXTENSION
+
+Act as a senior browser-extension engineer, product designer, frontend architect and UX specialist.
+
+Your task is to design and build a production-quality, fully functional browser extension that transforms the browser's default New Tab page into a personalized productivity workspace.
+
+I have attached reference screenshots of an existing product called ORBIT. Use them strictly as functional references to understand the desired features and interactions. DO NOT copy its branding, exact layouts, color palette, visual identity, or theme designs. Create an original product with a significantly better visual experience.
+
+The goal is to build a complete working product, not a static prototype or a collection of non-functional UI components.
+
+==================================================
+1. PRODUCT VISION
+==================================================
+
+Build a customizable personal browser workspace that allows users to:
+
+- Personalize their browser's New Tab page.
+- Create multiple independent workspaces.
+- Add, remove, hide and rearrange widgets.
+- Drag and resize dashboard components.
+- Organize website shortcuts into collections.
+- Customize wallpapers, colors, typography and appearance.
+- Manage daily tasks and productivity.
+- Switch between completely different visual themes.
+- Export and import their workspace configurations.
+- Store their information locally without requiring registration.
+
+The product should feel like a premium, modern desktop productivity application embedded inside a browser.
+
+Target browsers:
+- Google Chrome
+- Microsoft Edge
+
+Use Chrome Extension Manifest V3.
+
+==================================================
+2. TECHNOLOGY STACK
+==================================================
+
+Use the following technologies:
+
+Frontend:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- Zustand for global state management
+- Framer Motion for animations
+- Lucide React for icons
+
+Extension:
+- Chrome Extension Manifest V3
+- chrome.storage.local
+- chrome.storage.sync where appropriate
+- chrome.tabs
+- chrome.runtime
+- chrome.commands
+- chrome_url_overrides
+
+Layout and interactions:
+- react-grid-layout or a maintained compatible alternative for widget positioning and resizing.
+- @dnd-kit for sortable lists and drag-and-drop interactions.
+
+Storage:
+- IndexedDB for large assets and wallpaper files.
+- chrome.storage.local for application data.
+- chrome.storage.sync only for small user preferences and configurations.
+
+Architecture:
+- Feature-based modular architecture.
+- Reusable UI components.
+- Strict TypeScript.
+- Centralized design tokens.
+- Independent widget registration system.
+- Independent theme engine.
+- Storage abstraction layer.
+
+Avoid unnecessary dependencies.
+
+Do not introduce a backend for the initial version. The entire extension must work offline after installation, except for explicitly requested external services such as web search or weather.
+
+==================================================
+3. MAIN DASHBOARD / NEW TAB PAGE
+==================================================
+
+Replace the default browser New Tab page using the Manifest V3 chrome_url_overrides configuration.
+
+Create a visually impressive dashboard containing the following components:
+
+A. Header
+- Product logo and name.
+- Current workspace selector.
+- Customize button.
+- Settings button.
+- More options menu.
+
+B. Clock widget
+- Real-time clock.
+- Digital and analog clock styles.
+- 12-hour and 24-hour formats.
+- Show/hide seconds.
+- Configurable font size.
+- Current date and weekday.
+- Optional multiple time zones.
+
+C. Greeting widget
+- Dynamic greeting based on local time.
+- Morning, afternoon, evening and night.
+- Customizable display name.
+- Optional custom greeting message.
+
+D. Search widget
+- Google, Bing, DuckDuckGo, Brave Search and custom search engine.
+- Search suggestions where supported.
+- Keyboard shortcut.
+- Enter key navigation.
+- Configurable search placement and appearance.
+
+E. Daily quote widget
+- Random daily quote.
+- Quote author.
+- Refresh functionality.
+- Favorite quotes.
+- Custom quotes.
+
+F. Quick shortcuts
+- Add website.
+- Edit website.
+- Delete website.
+- Custom website name.
+- URL validation.
+- Custom icon or favicon.
+- Drag-and-drop reordering.
+- Open in current tab or new tab.
+
+G. Collections
+Allow users to create collections such as:
+- Development
+- Productivity
+- Social Media
+- Entertainment
+- Learning
+- Finance
+- Custom categories.
+
+Each collection should support:
+- Custom name.
+- Custom icon.
+- Custom accent color.
+- Website shortcuts.
+- Add/edit/delete links.
+- Reorder links.
+- Expand and collapse.
+- Show all / show fewer.
+- Collection-level visibility.
+- Collection management.
+
+H. Today's Tasks
+- Add tasks.
+- Complete tasks.
+- Delete tasks.
+- Edit tasks.
+- Priority levels.
+- Due dates.
+- Task completion progress.
+- Clear completed tasks.
+- Persist tasks locally.
+
+I. Footer / Status bar
+- Storage status.
+- Number of workspaces.
+- Number of active widgets.
+- Support link.
+- Feedback link.
+- Keyboard shortcut hints.
+- Add widget action.
+
+All dashboard components must be independently configurable.
+
+==================================================
+4. WIDGET MANAGEMENT SYSTEM
+==================================================
+
+Build a proper widget engine rather than hardcoding widgets directly into the dashboard.
+
+Initial widget registry:
+
+1. Clock
+2. Date
+3. Greeting
+4. Web Search
+5. Daily Quote
+6. Todo List
+7. Collections
+8. Quick Links
+9. Weather
+10. Calendar
+11. Pomodoro Timer
+12. World Clock
+13. Focus Timer
+14. Productivity Statistics
+15. Bookmarks
+16. Recently Visited Websites
+17. Notes
+18. Custom Text
+19. Daily Focus Goals
+20. Countdown Timer
+
+Each widget must have:
+- Unique ID.
+- Widget type.
+- Display name.
+- Configuration schema.
+- Default size.
+- Minimum and maximum dimensions.
+- Visibility state.
+- Position and layout configuration.
+- Widget-specific settings.
+- Independent persistence.
+
+Widget operations:
+- Add widget.
+- Remove widget.
+- Hide widget.
+- Restore hidden widget.
+- Resize widget.
+- Move widget.
+- Configure widget.
+- Duplicate widget where appropriate.
+- Reset widget settings.
+
+Build an Add Widget interface with searchable widget categories and previews.
+
+IMPORTANT:
+Use a registry-based architecture so additional widgets can be introduced without rewriting the dashboard.
+
+Widgets must have sensible loading, empty and error states.
+
+Do not show fake weather, calendar events or analytics. If an external integration is not configured, show an appropriate connection or setup state.
+
+==================================================
+5. DRAG, DROP AND RESIZE EDITOR
+==================================================
+
+Implement a dedicated dashboard editing mode.
+
+When users activate Customize:
+
+- Highlight widget boundaries.
+- Display widget management controls.
+- Enable drag-and-drop positioning.
+- Enable resizing using corner and edge handles.
+- Show grid alignment.
+- Prevent overlapping widgets.
+- Maintain responsive layouts.
+- Provide an Add Widget button.
+- Provide an Add Category button.
+- Allow widgets to be hidden or deleted.
+- Provide a Done Editing button.
+
+Editing controls:
+- Drag handle.
+- Edit settings.
+- Hide widget.
+- Delete widget.
+- Resize handle.
+
+Interactions should be smooth and predictable.
+
+Prevent accidental widget movement when users interact with buttons, inputs or links inside widgets.
+
+Persist layout changes automatically.
+
+Support sensible desktop, tablet and smaller-screen layouts.
+
+==================================================
+6. MULTIPLE WORKSPACES
+==================================================
+
+Build a workspace management system.
+
+Users should be able to create unlimited workspaces within reasonable local storage constraints.
+
+Each workspace must have its own:
+
+- Name.
+- Icon.
+- Widget collection.
+- Widget positions.
+- Widget configurations.
+- Shortcut collections.
+- Background.
+- Theme configuration.
+- Hidden widgets.
+- Search preferences.
+
+Workspace operations:
+- Create.
+- Rename.
+- Duplicate.
+- Switch.
+- Delete.
+- Set as default.
+- Export.
+- Import.
+
+Provide a workspace switcher dropdown.
+
+Example workspaces:
+- Main Workspace
+- Development
+- Work
+- Study
+- Personal
+- Entertainment.
+
+Switching workspaces should update the dashboard instantly without reloading the entire extension.
+
+Provide workspace backup and restore functionality.
+
+==================================================
+7. ADVANCED THEME ENGINE
+==================================================
+
+THIS IS A MAJOR PRODUCT DIFFERENTIATOR.
+
+Do not build themes as simple color variations. Every theme must have its own visual identity, component styling, typography, spacing, borders, shadows, background treatments and animations.
+
+Implement these six themes:
+
+THEME 1 — NEBULA
+- Futuristic visual identity.
+- Deep navy and purple surfaces.
+- Cyan and violet accents.
+- Subtle glowing elements.
+- Ambient gradients.
+- Translucent cards.
+- Smooth micro-interactions.
+
+THEME 2 — PAPER
+- Premium editorial design.
+- Warm ivory and cream backgrounds.
+- Elegant typography.
+- Minimal borders.
+- Subtle shadows.
+- Newspaper-inspired layout.
+- Spacious composition.
+
+THEME 3 — TERMINAL
+- Developer and cybersecurity-inspired design.
+- Deep black background.
+- Green or amber accents.
+- Monospace typography.
+- Terminal-inspired widgets.
+- Subtle scanline effects.
+- Minimal animations.
+
+THEME 4 — GLASS
+- Premium glassmorphism.
+- Translucent surfaces.
+- Background blur.
+- Floating cards.
+- Soft gradients.
+- Subtle shadows.
+- Light and dark variants.
+
+THEME 5 — RETRO
+- Vintage computing inspiration.
+- Warm brown, orange and beige.
+- Retro typography.
+- Pixel-inspired visual details.
+- Nostalgic interface elements.
+
+THEME 6 — BRUTALIST
+- High contrast.
+- Bold typography.
+- Sharp geometric layouts.
+- Strong visual hierarchy.
+- Black, white and accent colors.
+- Editorial-inspired composition.
+
+THEME engine requirements:
+
+- Theme gallery.
+- Live theme preview.
+- Apply theme.
+- Reset theme.
+- Custom theme creation.
+- Save custom themes.
+- Theme-specific design tokens.
+- Per-workspace theme selection.
+- Dark, light and AMOLED appearance variants where supported.
+
+Create a centralized token system using CSS variables.
+
+Do not scatter theme-specific conditional CSS throughout the application.
+
+==================================================
+8. WALLPAPER CUSTOMIZATION
+==================================================
+
+Implement a wallpaper management system.
+
+Features:
+- Built-in wallpaper gallery.
+- Upload local images.
+- Upload local videos.
+- Custom image backgrounds.
+- Gradient backgrounds.
+- Random wallpaper selection.
+- Wallpaper brightness.
+- Wallpaper blur.
+- Overlay strength.
+- Card transparency.
+- Card blur.
+- Background positioning.
+- Auto-rotate wallpaper.
+- Wallpaper-specific settings.
+
+Provide a gallery with visually attractive previews.
+
+Support JPG, PNG, WebP and appropriate video formats.
+
+Store uploaded assets in IndexedDB, not chrome.storage.sync.
+
+For video wallpapers:
+- Muted autoplay.
+- Loop.
+- Plays inline.
+- Respect reduced-motion preferences.
+- Provide a static fallback.
+- Avoid unnecessary background CPU usage.
+
+==================================================
+9. SETTINGS PANEL
+==================================================
+
+Build a polished settings sidebar or settings page.
+
+Organize settings into the following sections:
+
+1. Appearance
+   - Dark / Light / AMOLED.
+   - Accent color.
+   - Card transparency.
+   - Card blur.
+   - Corner radius.
+   - Typography.
+
+2. Themes
+   - Theme gallery.
+   - Theme preview.
+   - Custom themes.
+
+3. Wallpapers
+   - Gallery.
+   - Upload.
+   - Random background.
+   - Brightness.
+   - Blur.
+   - Overlay.
+   - Auto-rotation.
+
+4. Layout
+   - Widget spacing.
+   - Grid settings.
+   - Dashboard alignment.
+   - Default widget sizes.
+
+5. Search & Time
+   - Search engine.
+   - Clock style.
+   - Time format.
+   - Time zones.
+
+6. Hidden Elements
+   - Restore hidden widgets.
+   - Restore hidden collections.
+
+7. Keyboard Shortcuts
+   - Display available shortcuts.
+   - Configure shortcuts where browser APIs permit.
+
+8. Your Data
+   - Export JSON.
+   - Import JSON.
+   - Export all workspaces.
+   - Import backup.
+   - Reset workspace.
+   - Clear local data.
+
+All settings must be functional and persistent.
+
+==================================================
+10. KEYBOARD SHORTCUTS
+==================================================
+
+Implement useful shortcuts:
+
+- Ctrl/Cmd + K: Open search.
+- Ctrl/Cmd + E: Enter edit mode.
+- Ctrl/Cmd + Shift + W: Open workspace switcher.
+- Escape: Close modal or settings panel.
+- Enter: Execute search.
+
+Use the Chrome Commands API where applicable.
+
+Respect browser-reserved shortcuts and provide alternatives where a shortcut cannot be registered.
+
+==================================================
+11. STORAGE AND DATA ARCHITECTURE
+==================================================
+
+Implement a reliable local-first persistence architecture.
+
+Use:
+- chrome.storage.local for workspace configuration and application data.
+- chrome.storage.sync for small synchronization-friendly settings.
+- IndexedDB for wallpaper assets and larger data.
+- Zustand for application state.
+
+Requirements:
+- Autosave.
+- Storage error handling.
+- Versioned data schema.
+- Data migration support.
+- Backup and restore.
+- Import validation.
+- Corrupt backup handling.
+- Workspace isolation.
+- Sensible storage limits.
+
+Create a storage service abstraction instead of calling Chrome storage APIs directly inside React components.
+
+The extension must continue functioning without a backend or user account.
+
+==================================================
+12. DESIGN AND USER EXPERIENCE
+==================================================
+
+The interface should feel like a premium desktop application.
+
+Design requirements:
+- Excellent typography.
+- Consistent spacing.
+- Thoughtful visual hierarchy.
+- Smooth animations.
+- Subtle hover states.
+- Responsive layouts.
+- Accessible contrast.
+- Clear empty states.
+- Beautiful modals and drawers.
+- Consistent iconography.
+- No unnecessary borders.
+- No excessive gradients.
+- No cluttered dashboards.
+
+Avoid:
+- Generic admin dashboard aesthetics.
+- Excessive glassmorphism.
+- Random gradient backgrounds.
+- Oversized headings.
+- Inconsistent border radii.
+- Non-functional controls.
+- Excessive animations.
+- Cloned ORBIT layouts.
+
+The six themes must genuinely look different.
+
+==================================================
+13. PRIVACY AND SECURITY
+==================================================
+
+Privacy must be a core feature.
+
+- Do not collect browsing history.
+- Do not transmit personal data to external servers.
+- Do not require registration.
+- Do not request unnecessary permissions.
+- Do not execute remote JavaScript.
+- Validate imported JSON.
+- Sanitize user-generated content.
+- Prevent unsafe URL schemes such as javascript:.
+- Use secure external navigation.
+- Clearly identify external integrations.
+- Do not collect analytics by default.
+
+Request only the minimum browser permissions required.
+
+==================================================
+14. BROWSER COMPATIBILITY
+==================================================
+
+Build using Manifest V3.
+
+Implement:
+- New Tab override.
+- Extension service worker.
+- Browser storage integration.
+- Browser command integration.
+- Extension icons.
+- Proper manifest configuration.
+- Build output suitable for Chrome installation.
+
+Make the extension compatible with current Chrome and Edge versions.
+
+Keep browser-specific APIs behind an abstraction layer to make future Firefox support easier.
+
+==================================================
+15. PROJECT STRUCTURE
+==================================================
+
+Use a clean feature-based architecture.
+
+Suggested structure:
+
+src/
+  background/
+    service-worker.ts
+
+  newtab/
+    App.tsx
+
+  components/
+    ui/
+    layout/
+    widgets/
+    modals/
+    settings/
+    workspace/
+
+  features/
+    dashboard/
+    workspaces/
+    collections/
+    tasks/
+    wallpapers/
+    themes/
+    search/
+    storage/
+
+  widgets/
+    registry.ts
+    definitions/
+    components/
+    schemas/
+
+  themes/
+    registry.ts
+    nebula/
+    paper/
+    terminal/
+    glass/
+    retro/
+    brutalist/
+
+  stores/
+    workspace.store.ts
+    dashboard.store.ts
+    settings.store.ts
+    task.store.ts
+
+  services/
+    storage/
+    browser/
+    import-export/
+
+  hooks/
+  types/
+  utils/
+  styles/
+
+public/
+  manifest.json
+  icons/
+
+Use this structure as a starting point, adapting it where necessary.
+
+==================================================
+16. DEVELOPMENT AND IMPLEMENTATION RULES
+==================================================
+
+Do not stop after creating a design mockup.
+
+Work in the actual project repository.
+
+First inspect the existing repository and understand its structure. Preserve useful existing code.
+
+Then:
+
+1. Initialize the extension architecture.
+2. Configure Vite and React.
+3. Configure TypeScript.
+4. Configure Tailwind.
+5. Create the Manifest V3 configuration.
+6. Implement the dashboard.
+7. Implement the widget registry.
+8. Implement widget functionality.
+9. Implement drag-and-drop and resizing.
+10. Implement workspaces.
+11. Implement all six themes.
+12. Implement wallpaper customization.
+13. Implement settings.
+14. Implement local storage and import/export.
+15. Implement keyboard shortcuts.
+16. Test browser installation and functionality.
+17. Fix TypeScript errors, runtime errors and build issues.
+18. Optimize rendering and performance.
+
+Important implementation rules:
+
+- No placeholder buttons.
+- No fake functionality.
+- No dead-end interactions.
+- No hardcoded temporary data presented as real integrations.
+- No TODOs for core functionality.
+- No unnecessary backend.
+- No monolithic React components.
+- No direct DOM manipulation when React state should handle the interaction.
+- No TypeScript `any` unless strictly unavoidable.
+- No ignoring build errors.
+
+If an external API requires credentials, create a proper integration setup and graceful disconnected state.
+
+==================================================
+17. TESTING AND ACCEPTANCE CRITERIA
+==================================================
+
+The product is complete only when:
+
+- The extension builds successfully.
+- It installs in Chrome.
+- It works as the default New Tab page.
+- It works in Microsoft Edge.
+- All six themes can be selected.
+- Theme changes persist after restarting the browser.
+- Users can add, remove and configure widgets.
+- Widgets can be dragged and resized.
+- Multiple workspaces work independently.
+- Workspace switching preserves configurations.
+- Shortcuts can be created, edited and deleted.
+- Collections work correctly.
+- Tasks persist.
+- Wallpaper uploads persist.
+- Import and export work.
+- Settings persist.
+- Keyboard shortcuts work where supported.
+- No critical console errors exist.
+- The interface works at different screen sizes.
+- The extension works offline for local features.
+
+Provide:
+- Complete source code.
+- Production build.
+- Installation instructions.
+- README.
+- Architecture documentation.
+- Feature documentation.
+- Permissions explanation.
+- Testing checklist.
+
+==================================================
+18. FINAL EXPECTATION
+==================================================
+
+Build a polished, visually distinctive, functional browser productivity extension.
+
+Prioritize:
+1. Product quality.
+2. Excellent UX.
+3. Architecture and extensibility.
+4. Real functionality.
+5. Performance.
+6. Privacy.
+
+Do not simply generate all files in one pass without validating them.
+
+Implement incrementally, run the build, test the functionality, and fix problems before moving forward.
+
+At the end, provide a clear summary of:
+- Implemented features.
+- Remaining limitations.
+- Installation instructions.
+- Build commands.
+- Testing results.
+
+The final deliverable must be an actual installable browser extension, not just a website that resembles one.

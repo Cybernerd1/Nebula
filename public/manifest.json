@@ -1,0 +1,57 @@
+{
+  "name": "Nebula - Personal Browser Workspace",
+  "short_name": "Nebula",
+  "version": "1.0.0",
+  "description": "Transform your new tab into a personalized productivity workspace with widgets, themes, and multiple workspaces.",
+  "manifest_version": 3,
+  "author": "Nebula Team",
+  "homepage_url": "https://github.com/nebula-extension/nebula",
+  "icons": {
+    "128": "icons/icon-128.svg"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "commands"
+  ],
+  "host_permissions": [
+    "https://api.quotable.io/*",
+    "https://suggestqueries.google.com/*",
+    "https://api.bing.com/*",
+    "https://duckduckgo.com/*",
+    "https://search.brave.com/*"
+  ],
+  "commands": {
+    "open-search": {
+      "suggested_key": {
+        "default": "Ctrl+K",
+        "mac": "Command+K"
+      },
+      "description": "Open search widget"
+    },
+    "toggle-edit": {
+      "suggested_key": {
+        "default": "Ctrl+E",
+        "mac": "Command+E"
+      },
+      "description": "Toggle dashboard edit mode"
+    },
+    "open-workspace-switcher": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+W",
+        "mac": "Command+Shift+W"
+      },
+      "description": "Open workspace switcher"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
+  }
+}
