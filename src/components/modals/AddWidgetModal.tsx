@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Plus, ChevronRight, Check, Clock, Sun, Search as SearchIcon, Quote, CheckSquare, Folder, Link, Calendar, Timer, Target, BarChart2, BookOpen, FileText, Bell, Layers, CloudSun, History, Globe } from 'lucide-react';
 import { cn } from '../../utils/helpers';
 import { getWidgetsByCategory, getWidgetCategories, getWidgetDefinition, getRegisteredWidgets } from '../../widgets';
+import { useDashboardStore } from '../../stores/dashboard.store';
 import type { WidgetCategory } from '../../types';
 
 interface AddWidgetModalProps {
@@ -44,6 +45,7 @@ const widgetIcons: Record<string, React.ComponentType<{ className?: string }>> =
 export function AddWidgetModal({ isOpen, onClose }: AddWidgetModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<WidgetCategory | 'all'>('all');
+  const { addWidget } = useDashboardStore();
 
   const categories = getWidgetCategories();
   const allWidgets = useMemo(() => {
@@ -145,6 +147,7 @@ export function AddWidgetModal({ isOpen, onClose }: AddWidgetModalProps) {
                     key={widget.type}
                     widget={widget}
                     onAdd={() => {
+                      addWidget(widget.type);
                       onClose();
                     }}
                   />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutDashboard, Settings, MoreHorizontal, ChevronDown, Plus, Grid, Check, Code, Briefcase, BookOpen, Heart, Gamepad2 } from 'lucide-react';
 import { cn } from '../utils/helpers';
@@ -27,6 +27,7 @@ import { AddWidgetModal } from '../components/modals/AddWidgetModal';
 import { SettingsDrawer } from '../components/settings/SettingsDrawer';
 import { WorkspaceSwitcher } from '../components/workspace/WorkspaceSwitcher';
 import { Responsive } from 'react-grid-layout';
+import { storageService } from '../services/storage';
 
 const ResponsiveReactGridLayout = Responsive;
 
@@ -35,74 +36,97 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
     return null;
   }
 
-  const style: React.CSSProperties = {
+  const [mediaUrl, setMediaUrl] = useState<string>(wallpaper.value);
+
+  // Regenerate blob URL for uploaded wallpapers on mount
+  useEffect(() => {
+    if (wallpaper.type === 'image' && wallpaper.id && wallpaper.id.startsWith('upload-')) {
+      storageService.getWallpaperUrl(wallpaper.id).then((url) => {
+        if (url) setMediaUrl(url);
+      });
+    } else if (wallpaper.type === 'video' && wallpaper.id && wallpaper.id.startsWith('upload-')) {
+      storageService.getWallpaperUrl(wallpaper.id).then((url) => {
+        if (url) setMediaUrl(url);
+      });
+    }
+  }, [wallpaper.id, wallpaper.type]);
+
+  // Brightness: 1 = normal, 0 = darkest. Overlay adds dark layer.
+  // Use (1 - brightness) for opacity so 1 = fully visible, 0 = hidden
+  const brightness = wallpaper.brightness ?? 1;
+  const blur = wallpaper.blur ?? 0;
+  const overlay = wallpaper.overlay ?? 0;
+
+  const wrapperStyle: React.CSSProperties = {
     position: 'fixed',
     inset: 0,
     zIndex: -1,
-    opacity: 1 - (wallpaper.brightness ?? 1),
-    filter: `blur(${wallpaper.blur ?? 0}px)`,
-    backgroundPosition: wallpaper.position,
-    backgroundSize: wallpaper.position === 'cover' ? 'cover' : wallpaper.position === 'contain' ? 'contain' : 'auto',
-    backgroundRepeat: 'no-repeat',
+    overflow: 'hidden',
     transition: 'opacity 0.5s ease, filter 0.5s ease',
   };
 
+  const mediaStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    opacity: brightness,
+    filter: blur > 0 ? `blur(${blur}px)` : undefined,
+    transform: blur > 0 ? 'scale(1.05)' : undefined,
+    transition: 'opacity 0.5s ease, filter 0.5s ease',
+  };
+
+  const overlayEl = overlay > 0 ? (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: `rgba(0, 0, 0, ${overlay})`,
+        zIndex: 1,
+        pointerEvents: 'none',
+      }}
+    />
+  ) : null;
+
   if (wallpaper.type === 'image') {
+    const objectFit: React.CSSProperties['objectFit'] =
+      wallpaper.position === 'cover' ? 'cover' :
+      wallpaper.position === 'contain' ? 'contain' : 'cover';
     return (
-      <div style={style}>
+      <div style={wrapperStyle}>
         <img
-          src={wallpaper.value}
+          src={mediaUrl}
           alt=""
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: wallpaper.position === 'cover' ? 'cover' : wallpaper.position === 'contain' ? 'contain' : 'none',
-            objectPosition: wallpaper.position,
-          }}
+          style={{ ...mediaStyle, objectFit, objectPosition: 'center' }}
         />
-        {wallpaper.overlay && wallpaper.overlay > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: `rgba(0, 0, 0, ${wallpaper.overlay})`,
-            }}
-          />
-        )}
+        {overlayEl}
       </div>
     );
   }
 
   if (wallpaper.type === 'video') {
     return (
-      <div style={style}>
+      <div style={wrapperStyle}>
         <video
-          src={wallpaper.value}
+          src={mediaUrl}
           autoPlay
           muted
           loop
           playsInline
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-          }}
+          style={{ ...mediaStyle, objectFit: 'cover' }}
         />
-        {wallpaper.overlay && wallpaper.overlay > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: `rgba(0, 0, 0, ${wallpaper.overlay})`,
-            }}
-          />
-        )}
+        {overlayEl}
       </div>
     );
   }
 
   if (wallpaper.type === 'gradient') {
-    return <div style={{ ...style, background: wallpaper.value }} />;
+    return (
+      <div style={wrapperStyle}>
+        <div style={{ ...mediaStyle, background: wallpaper.value }} />
+        {overlayEl}
+      </div>
+    );
   }
 
   return null;

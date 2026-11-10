@@ -95,10 +95,9 @@ export const useSettingsStore = create<SettingsState>()(
           const stored = await storageService.getSettings();
           if (stored) {
             set({ settings: { ...DEFAULT_SETTINGS, ...stored }, isLoading: false });
-            get().applyTheme(stored.themes.currentTheme, stored.themes.currentVariant);
+            // Theme is applied by workspace store's initialize to respect per-workspace themes
           } else {
             set({ settings: DEFAULT_SETTINGS, isLoading: false });
-            get().applyTheme('nebula');
           }
         } catch (error) {
           set({ error: 'Failed to initialize settings', isLoading: false });
@@ -116,8 +115,11 @@ export const useSettingsStore = create<SettingsState>()(
         const newSettings = { ...get().settings, themes: { ...get().settings.themes, ...updates } };
         set({ settings: newSettings });
         await storageService.setSettings(newSettings);
-        if (updates.currentTheme) {
-          get().applyTheme(updates.currentTheme, updates.currentVariant);
+        // Apply theme whenever theme id OR variant changes
+        if (updates.currentTheme || updates.currentVariant !== undefined) {
+          const themeId = updates.currentTheme ?? get().settings.themes.currentTheme;
+          const variant = updates.currentVariant ?? get().settings.themes.currentVariant;
+          get().applyTheme(themeId, variant);
         }
       },
 
@@ -177,11 +179,12 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       applyTheme: async (themeId, variant) => {
-        const { themes } = get().settings;
-        const theme = themeId === 'custom' 
+        const { themes, appearance } = get().settings;
+        const customTheme = themeId === 'custom'
           ? themes.customThemes.find((t) => t.id === variant)
           : null;
-        
+
+        // Apply data-theme and data-variant attributes to <html>
         document.documentElement.setAttribute('data-theme', themeId);
         if (variant) {
           document.documentElement.setAttribute('data-variant', variant);
@@ -189,9 +192,14 @@ export const useSettingsStore = create<SettingsState>()(
           document.documentElement.removeAttribute('data-variant');
         }
 
-        if (theme) {
-          applyCustomThemeTokens(theme.tokens);
+        // Apply custom token overrides if it's a custom theme
+        if (customTheme) {
+          applyCustomThemeTokens(customTheme.tokens);
         }
+
+        // Re-apply appearance overrides (accent color, corner radius, etc.)
+        // so they persist on top of whichever theme CSS variables were set
+        applyAppearanceToDOM(appearance);
       },
 
       addCustomTheme: async (theme) => {

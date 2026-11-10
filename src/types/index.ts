@@ -143,6 +143,7 @@ export interface WallpaperConfig {
   type: 'image' | 'video' | 'gradient' | 'none';
   source: 'gallery' | 'upload' | 'custom';
   value: string;
+  id?: string; // Wallpaper ID for uploaded wallpapers to regenerate blob URLs
   brightness: number;
   blur: number;
   overlay: number;

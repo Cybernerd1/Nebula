@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settings.store';
 import { useDashboardStore } from '../../stores/dashboard.store';
 import { getRegisteredWidgets, getWidgetCategories } from '../../widgets';
 import { storageService } from '../../services/storage';
+import type { WallpaperConfig } from '../../types';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -82,7 +83,7 @@ export function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
             <div className="flex-1 overflow-y-auto p-6">
               {activeSection === 'appearance' && <AppearanceSection settings={settings.appearance} onUpdate={updateAppearance} />}
               {activeSection === 'themes' && <ThemesSection settings={settings.themes} onUpdate={updateThemes} applyTheme={applyTheme} addCustomTheme={addCustomTheme} removeCustomTheme={removeCustomTheme} />}
-              {activeSection === 'wallpapers' && <WallpapersSection settings={settings.wallpapers} onUpdate={updateWallpapers} />}
+              {activeSection === 'wallpapers' && <WallpapersSection settings={settings.wallpapers} onUpdate={updateWallpapers} activeWorkspaceId={activeWorkspaceId} />}
               {activeSection === 'layout' && <LayoutSection settings={settings.layout} onUpdate={updateLayout} />}
               {activeSection === 'search' && <SearchSection settings={settings.search} onUpdate={updateSearch} />}
               {activeSection === 'hidden' && <HiddenSection settings={settings.hidden} onUpdate={updateHidden} hiddenWidgets={hiddenWidgets} />}
@@ -343,9 +344,11 @@ function ThemesSection({
 function WallpapersSection({
   settings,
   onUpdate,
+  activeWorkspaceId,
 }: {
   settings: import('../../types').WallpaperSettings;
   onUpdate: (updates: Partial<import('../../types').WallpaperSettings>) => Promise<void>;
+  activeWorkspaceId: string | null;
 }) {
   const [uploadFiles, setUploadFiles] = useState<FileList | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -517,6 +520,79 @@ function WallpapersSection({
             <Upload className="w-4 h-4 mr-2" /> Choose Files
           </button>
         </div>
+      </div>
+
+      <div>
+        <h3 className="text-heading-md font-semibold text-text mb-4">Current Wallpaper</h3>
+        {activeWorkspaceId ? (() => {
+          const workspaceStore = useWorkspaceStore.getState();
+          const workspace = workspaceStore.getWorkspace(activeWorkspaceId!);
+          const wallpaper = workspace?.wallpaper;
+          
+          if (!wallpaper || wallpaper.type === 'none') {
+            return <p className="text-text-muted text-body-sm">No wallpaper set for this workspace</p>;
+          }
+          
+          const handleWallpaperSettingChange = (updates: Partial<WallpaperConfig>) => {
+            workspaceStore.updateWorkspace(activeWorkspaceId!, { wallpaper: { ...wallpaper, ...updates } });
+          };
+          
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="label">Brightness: {Math.round(wallpaper.brightness * 100)}%</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={wallpaper.brightness * 100}
+                  onChange={(e) => handleWallpaperSettingChange({ brightness: Number(e.target.value) / 100 })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div>
+                <label className="label">Blur: {wallpaper.blur}px</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="40"
+                  value={wallpaper.blur}
+                  onChange={(e) => handleWallpaperSettingChange({ blur: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div>
+                <label className="label">Overlay: {Math.round(wallpaper.overlay * 100)}%</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={wallpaper.overlay * 100}
+                  onChange={(e) => handleWallpaperSettingChange({ overlay: Number(e.target.value) / 100 })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div>
+                <label className="label">Position</label>
+                <select
+                  value={wallpaper.position}
+                  onChange={(e) => handleWallpaperSettingChange({ position: e.target.value as WallpaperConfig['position'] })}
+                  className="input"
+                >
+                  <option value="center">Center</option>
+                  <option value="cover">Cover</option>
+                  <option value="contain">Contain</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              </div>
+            </div>
+          );
+        })() : (
+          <p className="text-text-muted text-body-sm">No active workspace</p>
+        )}
       </div>
 
       <div>

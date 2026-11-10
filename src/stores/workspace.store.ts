@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Workspace, WidgetConfig, WorkspaceSettings } from '../types';
 import { generateId } from '../utils/helpers';
 import { storageService } from '../services/storage';
+import { useSettingsStore } from './settings.store';
 
 interface WorkspaceState {
   workspaces: Workspace[];
@@ -57,11 +58,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           const storage = await storageService.getStorage();
           if (storage && storage.workspaces.length > 0) {
             const activeId = storage.activeWorkspaceId || storage.workspaces[0].id;
+            const activeWorkspace = storage.workspaces.find((ws) => ws.id === activeId);
             set({
               workspaces: storage.workspaces,
               activeWorkspaceId: activeId,
               isLoading: false,
             });
+
+            // Apply the active workspace's theme on initialization
+            if (activeWorkspace?.themeId) {
+              useSettingsStore.getState().applyTheme(activeWorkspace.themeId, activeWorkspace.themeVariant);
+            }
           } else {
             const workspace: Workspace = {
               ...DEFAULT_WORKSPACE,
@@ -75,6 +82,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
               isLoading: false,
             });
             await get().persistToStorage();
+
+            // Apply default theme for new workspace
+            useSettingsStore.getState().applyTheme('nebula');
           }
         } catch (error) {
           set({ error: 'Failed to initialize workspaces', isLoading: false });
@@ -164,6 +174,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         set({ activeWorkspaceId: id });
         await get().persistToStorage();
+
+        // Apply workspace's theme when switching workspaces
+        if (workspace.themeId) {
+          useSettingsStore.getState().applyTheme(workspace.themeId, workspace.themeVariant);
+        }
       },
 
       setDefaultWorkspace: async (id) => {
