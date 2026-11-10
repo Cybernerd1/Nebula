@@ -208,6 +208,14 @@ export const useSettingsStore = create<SettingsState>()(
           document.documentElement.removeAttribute('data-variant');
         }
 
+        // Apply AMOLED class if theme is amoled or variant is amoled
+        const html = document.documentElement;
+        if (themeId === 'amoled' || variant === 'amoled') {
+          html.classList.add('amoled');
+        } else {
+          html.classList.remove('amoled');
+        }
+
         // Apply custom token overrides if it's a custom theme, otherwise
         // clear any leftovers from a previously applied custom theme
         if (customTheme) {
@@ -250,7 +258,7 @@ export const useSettingsStore = create<SettingsState>()(
         const hiddenWidgets = hidden.hiddenWidgets.includes(widgetId)
           ? hidden.hiddenWidgets.filter((id) => id !== widgetId)
           : [...hidden.hiddenWidgets, widgetId];
-        
+
         await get().updateHidden({ hiddenWidgets });
       },
 
@@ -259,7 +267,7 @@ export const useSettingsStore = create<SettingsState>()(
         const hiddenCollections = hidden.hiddenCollections.includes(collectionId)
           ? hidden.hiddenCollections.filter((id) => id !== collectionId)
           : [...hidden.hiddenCollections, collectionId];
-        
+
         await get().updateHidden({ hiddenCollections });
       },
     }),
@@ -267,8 +275,8 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'settings-store',
       storage: createJSONStorage(() => ({
         getItem: () => null,
-        setItem: () => {},
-        removeItem: () => {},
+        setItem: () => { },
+        removeItem: () => { },
       })),
       partialize: () => ({}),
     }
@@ -277,7 +285,7 @@ export const useSettingsStore = create<SettingsState>()(
 
 function applyAppearanceToDOM(appearance: AppearanceSettings) {
   const root = document.documentElement;
-  
+
   root.setAttribute('data-color-scheme', appearance.colorScheme);
   if (appearance.colorScheme === 'amoled') {
     root.classList.add('amoled');
@@ -322,7 +330,7 @@ function applyCustomThemeTokens(tokens: Partial<import('../types').ThemeTokens>)
   // custom themes (or back to built-ins) doesn't leave stale overrides
   clearCustomThemeTokens();
   const root = document.documentElement;
-  
+
   if (tokens.colors) {
     Object.entries(tokens.colors).forEach(([key, value]) => {
       const prop = `--color-${key}`;
@@ -330,7 +338,7 @@ function applyCustomThemeTokens(tokens: Partial<import('../types').ThemeTokens>)
       CUSTOM_TOKEN_PROPS.push(prop);
     });
   }
-  
+
   if (tokens.fonts) {
     Object.entries(tokens.fonts).forEach(([key, value]) => {
       const prop = `--font-${key}`;
@@ -338,7 +346,7 @@ function applyCustomThemeTokens(tokens: Partial<import('../types').ThemeTokens>)
       CUSTOM_TOKEN_PROPS.push(prop);
     });
   }
-  
+
   if (tokens.shadows) {
     Object.entries(tokens.shadows).forEach(([key, value]) => {
       const prop = `--shadow-${key}`;

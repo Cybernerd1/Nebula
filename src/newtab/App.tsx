@@ -1,5 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';import { LayoutDashboard, Settings, MoreHorizontal, ChevronDown, Plus, Grid, Check, Code, Briefcase, BookOpen, Heart, Gamepad2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  LayoutDashboard, Settings, ChevronDown, Plus, LayoutGrid, Check,
+  Code, Briefcase, BookOpen, Heart, Gamepad2, Sparkles,
+} from 'lucide-react';
 import { cn } from '../utils/helpers';
 import { useWorkspaceStore } from '../stores/workspace.store';
 import { useDashboardStore } from '../stores/dashboard.store';
@@ -31,28 +35,51 @@ import { useTaskStore } from '../stores/task.store';
 
 const ResponsiveReactGridLayout = WidthProvider(Responsive);
 
-function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../types').WallpaperConfig; settings: import('../types').WallpaperSettings }) {
+/* ─────────────────────────────────────────────────────────────
+   Wallpaper Background
+   Renders fixed behind everything. Hooks run unconditionally
+   to prevent React hook-count mismatches on type changes.
+───────────────────────────────────────────────────────────── */
+function WallpaperBackground({
+  wallpaper,
+  settings,
+}: {
+  wallpaper?: import('../types').WallpaperConfig;
+  settings: import('../types').WallpaperSettings;
+}) {
+  const [mediaUrl, setMediaUrl] = useState<string>(wallpaper?.value ?? '');
+
+  // For uploaded wallpapers, fetch fresh blob URLs on mount and when ID changes
+  useEffect(() => {
+    let cancelled = false;
+
+    if (
+      (wallpaper?.type === 'image' || wallpaper?.type === 'video') &&
+      wallpaper.id?.startsWith('upload-')
+    ) {
+      // Fetch fresh blob URL for uploaded wallpapers
+      storageService.getWallpaperUrl(wallpaper.id).then((url) => {
+        if (!cancelled && url) {
+          console.log('Loaded wallpaper URL:', wallpaper.id);
+          setMediaUrl(url);
+        }
+      }).catch((err) => {
+        console.error('Failed to load wallpaper:', err);
+      });
+    } else if (wallpaper?.type === 'gradient' || wallpaper?.type === 'image' || wallpaper?.type === 'video') {
+      // For gallery/custom wallpapers, use the value directly
+      console.log('Using wallpaper value directly:', { type: wallpaper.type, value: wallpaper.value?.substring(0, 50) });
+      setMediaUrl(wallpaper.value ?? '');
+    }
+
+    return () => { cancelled = true; };
+  }, [wallpaper?.id, wallpaper?.type, wallpaper?.value]);
+
   if (!wallpaper || wallpaper.type === 'none') {
+    console.log('No wallpaper to display:', wallpaper?.type);
     return null;
   }
 
-  const [mediaUrl, setMediaUrl] = useState<string>(wallpaper.value);
-
-  // Regenerate blob URL for uploaded wallpapers on mount
-  useEffect(() => {
-    if (wallpaper.type === 'image' && wallpaper.id && wallpaper.id.startsWith('upload-')) {
-      storageService.getWallpaperUrl(wallpaper.id).then((url) => {
-        if (url) setMediaUrl(url);
-      });
-    } else if (wallpaper.type === 'video' && wallpaper.id && wallpaper.id.startsWith('upload-')) {
-      storageService.getWallpaperUrl(wallpaper.id).then((url) => {
-        if (url) setMediaUrl(url);
-      });
-    }
-  }, [wallpaper.id, wallpaper.type]);
-
-  // Brightness: 1 = normal, 0 = darkest. Overlay adds dark layer.
-  // Use (1 - brightness) for opacity so 1 = fully visible, 0 = hidden
   const brightness = wallpaper.brightness ?? 1;
   const blur = wallpaper.blur ?? 0;
   const overlay = wallpaper.overlay ?? 0;
@@ -62,7 +89,6 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
     inset: 0,
     zIndex: -1,
     overflow: 'hidden',
-    transition: 'opacity 0.5s ease, filter 0.5s ease',
   };
 
   const mediaStyle: React.CSSProperties = {
@@ -73,31 +99,33 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
     opacity: brightness,
     filter: blur > 0 ? `blur(${blur}px)` : undefined,
     transform: blur > 0 ? 'scale(1.05)' : undefined,
-    transition: 'opacity 0.5s ease, filter 0.5s ease',
+    transition: 'opacity 0.4s ease',
   };
 
-  const overlayEl = overlay > 0 ? (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        background: `rgba(0, 0, 0, ${overlay})`,
-        zIndex: 1,
-        pointerEvents: 'none',
-      }}
-    />
-  ) : null;
+  const overlayEl =
+    overlay > 0 ? (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `rgba(0, 0, 0, ${overlay})`,
+          zIndex: 1,
+          pointerEvents: 'none',
+        }}
+      />
+    ) : null;
 
   if (wallpaper.type === 'image') {
     const objectFit: React.CSSProperties['objectFit'] =
-      wallpaper.position === 'cover' ? 'cover' :
       wallpaper.position === 'contain' ? 'contain' : 'cover';
     return (
       <div style={wrapperStyle}>
         <img
           src={mediaUrl}
           alt=""
+          aria-hidden="true"
           style={{ ...mediaStyle, objectFit, objectPosition: 'center' }}
+          onError={(e) => console.error('Image load failed:', e)}
         />
         {overlayEl}
       </div>
@@ -113,7 +141,9 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
           muted
           loop
           playsInline
+          aria-hidden="true"
           style={{ ...mediaStyle, objectFit: 'cover' }}
+          onError={(e) => console.error('Video load failed:', e)}
         />
         {overlayEl}
       </div>
@@ -121,9 +151,14 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
   }
 
   if (wallpaper.type === 'gradient') {
+    console.log('Rendering gradient:', mediaUrl?.substring(0, 50));
     return (
       <div style={wrapperStyle}>
-        <div style={{ ...mediaStyle, background: wallpaper.value }} />
+        <div 
+          aria-hidden="true" 
+          style={{ ...mediaStyle, background: mediaUrl || wallpaper.value }}
+          data-debug="gradient"
+        />
         {overlayEl}
       </div>
     );
@@ -132,6 +167,9 @@ function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../t
   return null;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   App — initialises stores, shows loading / error states
+───────────────────────────────────────────────────────────── */
 export function App() {
   const { initialize: initWorkspaces, error: workspaceError } = useWorkspaceStore();
   const { initialize: initSettings, settings, applyTheme, error: settingsError } = useSettingsStore();
@@ -148,14 +186,10 @@ export function App() {
         registerWidgetDefinitions(widgets);
         await initWorkspaces();
         await initSettings();
-        if (mounted) {
-          setInitialized(true);
-        }
-      } catch (error) {
-        console.error('Failed to initialize Nebula:', error);
-        if (mounted) {
-          setInitError('Failed to initialize. Please reload the page.');
-        }
+        if (mounted) setInitialized(true);
+      } catch (err) {
+        console.error('Failed to initialize Nebula:', err);
+        if (mounted) setInitError('Failed to initialize. Please reload the page.');
       }
     };
     init();
@@ -164,29 +198,77 @@ export function App() {
 
   useEffect(() => {
     if (initialized) {
-      applyTheme(settings.themes.currentTheme, settings.themes.currentVariant);
+      const theme = settings.themes.currentTheme;
+      const variant = settings.themes.currentVariant || 'dark';
+
+      // Set the CSS selector attributes for theme targeting
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-variant', variant);
+
+      // Apply AMOLED class if appropriate
+      if (theme === 'amoled' || variant === 'amoled') {
+        document.documentElement.classList.add('amoled');
+      } else {
+        document.documentElement.classList.remove('amoled');
+      }
+
+      // Apply additional theme logic
+      applyTheme(theme, variant);
     }
   }, [settings.themes.currentTheme, settings.themes.currentVariant, applyTheme, initialized]);
 
+  /* Loading */
   if (!initialized) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-text-muted">Loading Nebula...</p>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: 'var(--color-background)' }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="spinner spinner-lg" aria-label="Loading" />
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+            Loading Nebula…
+          </p>
         </div>
       </div>
     );
   }
 
+  /* Error */
   if (initError || workspaceError || settingsError) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center p-8">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 mx-auto mb-4 text-error">⚠️</div>
-          <h2 className="text-heading-lg font-semibold text-text mb-2">Something went wrong</h2>
-          <p className="text-text-muted mb-6">{initError || workspaceError || settingsError || 'Unknown error'}</p>
-          <button onClick={() => window.location.reload()} className="btn-primary">
+      <div
+        className="min-h-screen flex items-center justify-center p-8"
+        style={{ backgroundColor: 'var(--color-background)' }}
+      >
+        <div className="text-center" style={{ maxWidth: '400px' }}>
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}
+          >
+            <span style={{ fontSize: '1.25rem' }}>⚠</span>
+          </div>
+          <h2
+            style={{
+              fontSize: '1rem',
+              fontWeight: 600,
+              color: 'var(--color-text)',
+              marginBottom: '0.5rem',
+            }}
+          >
+            Something went wrong
+          </h2>
+          <p
+            style={{
+              fontSize: '0.875rem',
+              color: 'var(--color-text-muted)',
+              marginBottom: '1.5rem',
+              lineHeight: 1.6,
+            }}
+          >
+            {initError || workspaceError || settingsError || 'Unknown error'}
+          </p>
+          <button onClick={() => window.location.reload()} className="btn btn-primary">
             Reload Page
           </button>
         </div>
@@ -195,16 +277,28 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <Dashboard />
     </div>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Dashboard
+───────────────────────────────────────────────────────────── */
 function Dashboard() {
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore();
-  const { isEditing, setEditing, layout, rebuildLayout, applyLayoutChange, getVisibleWidgets, getWidgetConfig, getWidgetDefinition } = useDashboardStore();
-  const { settings, updateHidden } = useSettingsStore();
+  const {
+    isEditing,
+    setEditing,
+    layout,
+    rebuildLayout,
+    applyLayoutChange,
+    getVisibleWidgets,
+    getWidgetDefinition,
+  } = useDashboardStore();
+  const { settings } = useSettingsStore();
+
   const [showSettings, setShowSettings] = useState(false);
   const [showAddWidget, setShowAddWidget] = useState(false);
   const [showWorkspaceSwitcher, setShowWorkspaceSwitcher] = useState(false);
@@ -212,21 +306,17 @@ function Dashboard() {
   const activeWorkspace = workspaces.find((ws) => ws.id === activeWorkspaceId);
   const visibleWidgets = getVisibleWidgets();
 
-  // Keep the grid layout in sync with the active workspace's widgets
+  /* Sync grid layout with workspace */
   useEffect(() => {
-    if (activeWorkspace) {
-      rebuildLayout(activeWorkspace.widgets);
-    }
+    if (activeWorkspace) rebuildLayout(activeWorkspace.widgets);
   }, [activeWorkspace, rebuildLayout]);
 
-  // Hydrate the task store from the active workspace (todo widget, stats)
+  /* Hydrate task store */
   useEffect(() => {
-    if (activeWorkspaceId) {
-      useTaskStore.getState().initialize(activeWorkspaceId);
-    }
+    if (activeWorkspaceId) useTaskStore.getState().initialize(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
-  // Global keyboard shortcuts, honoring user-configured combos from settings
+  /* Global keyboard shortcuts */
   useEffect(() => {
     const shortcuts = settings.shortcuts.shortcuts;
     const match = (combo: string, e: KeyboardEvent) => {
@@ -247,7 +337,9 @@ function Dashboard() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable;
+      const typing =
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) ||
+        target?.isContentEditable;
       if (typing && !(e.ctrlKey || e.metaKey || e.key === 'Escape')) return;
 
       if (match(shortcuts['search'] || '', e)) {
@@ -275,13 +367,16 @@ function Dashboard() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [settings.shortcuts.shortcuts, isEditing, showSettings, showAddWidget, showWorkspaceSwitcher, setEditing]);
+  }, [
+    settings.shortcuts.shortcuts,
+    isEditing,
+    showSettings,
+    showAddWidget,
+    showWorkspaceSwitcher,
+    setEditing,
+  ]);
 
   if (!activeWorkspace) return null;
-
-  const handleLayoutChange = (newLayout: readonly import('../types').GridLayoutItem[]) => {
-    applyLayoutChange(newLayout);
-  };
 
   const WidgetComponentMap: Record<string, React.ComponentType<any>> = {
     clock: ClockWidget,
@@ -303,7 +398,6 @@ function Dashboard() {
     productivityStats: ProductivityStatsWidget,
   };
 
-  // Global layout settings act as defaults; workspace settings take precedence
   const gridColumns = activeWorkspace.settings.gridColumns || settings.layout.gridColumns;
   const gridRowHeight = activeWorkspace.settings.gridRowHeight || settings.layout.gridRowHeight;
   const widgetGap = activeWorkspace.settings.widgetGap || settings.layout.widgetSpacing;
@@ -322,8 +416,46 @@ function Dashboard() {
         onOpenWorkspaceSwitcher={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
       />
 
-      <main className="flex-1 overflow-hidden relative">
-        <WallpaperBackground wallpaper={activeWorkspace.wallpaper} settings={settings.wallpapers} />
+      <main className="flex-1 relative" style={{ minHeight: 0 }}>
+        <WallpaperBackground
+          wallpaper={activeWorkspace.wallpaper}
+          settings={settings.wallpapers}
+        />
+
+        {/* Edit mode banner */}
+        <AnimatePresence>
+          {isEditing && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="relative z-30 flex items-center justify-between px-6 py-2.5"
+              style={{
+                backgroundColor: 'var(--color-primary-muted)',
+                borderBottom: '1px solid var(--color-primary)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.8125rem',
+                  color: 'var(--color-primary)',
+                  fontWeight: 500,
+                }}
+              >
+                Edit mode — drag to rearrange, resize from corners
+              </span>
+              <button
+                onClick={() => setEditing(false)}
+                className="btn btn-primary btn-sm flex items-center gap-1.5"
+                style={{ height: '28px', padding: '0 0.75rem', fontSize: '0.8125rem' }}
+              >
+                <Check style={{ width: '14px', height: '14px' }} />
+                Done
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <ResponsiveReactGridLayout
           className="layout"
           layouts={{ lg: layout }}
@@ -332,13 +464,12 @@ function Dashboard() {
           rowHeight={gridRowHeight}
           margin={[widgetGap, widgetGap]}
           containerPadding={[widgetGap, widgetGap]}
-          onLayoutChange={handleLayoutChange}
+          onLayoutChange={(newLayout) => applyLayoutChange(newLayout)}
         >
           {visibleWidgets.map((widget) => {
             const WidgetComponent = WidgetComponentMap[widget.type];
             const definition = getWidgetDefinition(widget.type);
             if (!WidgetComponent || !definition) return null;
-
             return (
               <div key={widget.id} className="group">
                 <WidgetWrapper
@@ -350,48 +481,26 @@ function Dashboard() {
               </div>
             );
           })}
+          {/* Invisible spacer at the bottom so widgets can be dropped below */}
           <div
-            key="add-widget-placeholder"
-            data-grid={{ i: 'add-widget-placeholder', x: 0, y: 999, w: 12, h: 1, static: true }}
-            className="pointer-events-none"
+            key="__bottom-spacer"
+            data-grid={{ i: '__bottom-spacer', x: 0, y: 999, w: 12, h: 1, static: true }}
+            style={{ pointerEvents: 'none', userSelect: 'none' }}
           />
         </ResponsiveReactGridLayout>
-
-        {isEditing && (
-          <div className="absolute bottom-4 right-4 z-50">
-            <motion.button
-              onClick={() => setEditing(false)}
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="btn-primary px-6 py-3 shadow-xl flex items-center gap-2"
-            >
-              <Check className="w-5 h-5" />
-              Done Editing
-            </motion.button>
-          </div>
-        )}
       </main>
 
-      <Footer
-        workspace={activeWorkspace}
-        widgetCount={visibleWidgets.length}
-      />
+      <Footer widgetCount={visibleWidgets.length} />
 
       <AnimatePresence>
         {showSettings && (
-          <SettingsDrawer
-            isOpen={showSettings}
-            onClose={() => setShowSettings(false)}
-          />
+          <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
         {showAddWidget && (
-          <AddWidgetModal
-            isOpen={showAddWidget}
-            onClose={() => setShowAddWidget(false)}
-          />
+          <AddWidgetModal isOpen={showAddWidget} onClose={() => setShowAddWidget(false)} />
         )}
       </AnimatePresence>
 
@@ -410,9 +519,11 @@ function Dashboard() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Widget Wrapper — connects store to widget component props
+───────────────────────────────────────────────────────────── */
 function WidgetWrapper({
   widget,
-  definition,
   Component,
   isEditing,
 }: {
@@ -421,13 +532,15 @@ function WidgetWrapper({
   Component: React.ComponentType<any>;
   isEditing: boolean;
 }) {
-  const { updateWidgetSettings, removeWidget, hideWidget, showWidget } = useDashboardStore();
+  const { updateWidgetSettings, removeWidget, hideWidget } = useDashboardStore();
 
   return (
     <div className="h-full w-full">
       <Component
         config={widget}
-        onConfigChange={(patch: Record<string, unknown>) => updateWidgetSettings(widget.id, patch)}
+        onConfigChange={(patch: Record<string, unknown>) =>
+          updateWidgetSettings(widget.id, patch)
+        }
         onRemove={() => removeWidget(widget.id)}
         onHide={() => hideWidget(widget.id)}
         isEditing={isEditing}
@@ -436,11 +549,16 @@ function WidgetWrapper({
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Header  — 64px, three-column layout
+   Left: logo + product name + subtitle
+   Center: workspace selector
+   Right: actions
+───────────────────────────────────────────────────────────── */
 function Header({
   workspace,
   workspaces,
   activeWorkspaceId,
-  onWorkspaceChange,
   onToggleEdit,
   isEditing,
   onOpenSettings,
@@ -458,57 +576,131 @@ function Header({
   onOpenWorkspaceSwitcher: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-lg border-b border-border px-6 py-4">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-primary/20 rounded-xl">
-            <LayoutDashboard className="w-6 h-6 text-primary" />
+    <header
+      className="sticky top-0 z-40"
+      style={{
+        height: 'var(--header-height)',
+        backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, transparent)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--color-border)',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: '1440px',
+          margin: '0 auto',
+          height: '100%',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          padding: '0 1.5rem',
+          gap: '1rem',
+        }}
+      >
+        {/* ── Left: Logo + Product name ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: 'var(--color-primary-muted)',
+              flexShrink: 0,
+            }}
+          >
+            <Sparkles
+              style={{ width: '16px', height: '16px', color: 'var(--color-primary)' }}
+              aria-hidden="true"
+            />
           </div>
           <div>
-            <h1 className="text-heading-lg font-bold text-text">Nebula</h1>
-            <p className="text-body-xs text-text-muted">Your personal browser workspace</p>
+            <div
+              style={{
+                fontSize: '0.9375rem',
+                fontWeight: 650,
+                color: 'var(--color-text)',
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Nebula
+            </div>
+            <div
+              style={{
+                fontSize: '0.6875rem',
+                color: 'var(--color-text-muted)',
+                lineHeight: 1.2,
+              }}
+            >
+              {workspaces.length > 1 ? `${workspaces.length} workspaces` : 'Browser workspace'}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex justify-center">
-          <WorkspaceSwitcherButton
-            workspace={workspace}
-            workspaces={workspaces}
-            onClick={onOpenWorkspaceSwitcher}
-          />
-        </div>
+        {/* ── Center: Workspace switcher ── */}
+        <WorkspaceSwitcherButton workspace={workspace} onClick={onOpenWorkspaceSwitcher} />
 
-        <div className="flex items-center gap-2">
+        {/* ── Right: Actions ── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            justifyContent: 'flex-end',
+          }}
+        >
+          {/* Add widget */}
           <button
             onClick={onOpenAddWidget}
-            className="btn-icon p-2"
-            title="Add Widget (Ctrl+Shift+A)"
+            className="btn-icon"
+            aria-label="Add widget"
+            title="Add widget (Ctrl+Shift+A)"
           >
-            <Plus className="w-5 h-5" />
+            <Plus style={{ width: '18px', height: '18px' }} />
           </button>
+
+          {/* Separator */}
+          <div
+            style={{
+              width: '1px',
+              height: '20px',
+              backgroundColor: 'var(--color-border)',
+              margin: '0 0.25rem',
+            }}
+            aria-hidden="true"
+          />
+
+          {/* Edit / customize */}
           <button
             onClick={() => onToggleEdit(!isEditing)}
-            className={cn(
-              'btn-icon p-2 transition-all',
-              isEditing ? 'bg-primary text-white' : 'bg-surface-elevated text-text'
-            )}
-            title={isEditing ? 'Done Editing (Ctrl+E)' : 'Customize (Ctrl+E)'}
+            className={cn('btn-icon', isEditing && 'active-state')}
+            aria-label={isEditing ? 'Exit edit mode' : 'Edit layout'}
+            aria-pressed={isEditing}
+            title={isEditing ? 'Done editing (Ctrl+E)' : 'Edit layout (Ctrl+E)'}
+            style={
+              isEditing
+                ? {
+                  backgroundColor: 'var(--color-primary-muted)',
+                  color: 'var(--color-primary)',
+                }
+                : {}
+            }
           >
-            <Grid className="w-5 h-5" />
+            <LayoutGrid style={{ width: '18px', height: '18px' }} />
           </button>
+
+          {/* Settings */}
           <button
             onClick={onOpenSettings}
-            className="btn-icon p-2"
-            title="Settings"
+            className="btn-icon"
+            aria-label="Settings"
+            title="Settings (Ctrl+,)"
           >
-            <Settings className="w-5 h-5" />
-          </button>
-          <button
-            onClick={onOpenWorkspaceSwitcher}
-            className="btn-icon p-2"
-            title="More Options"
-          >
-            <MoreHorizontal className="w-5 h-5" />
+            <Settings style={{ width: '18px', height: '18px' }} />
           </button>
         </div>
       </div>
@@ -516,45 +708,95 @@ function Header({
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Workspace Switcher Button — compact pill in header center
+───────────────────────────────────────────────────────────── */
 function WorkspaceSwitcherButton({
   workspace,
-  workspaces,
   onClick,
 }: {
   workspace: import('../types').Workspace;
-  workspaces: import('../types').Workspace[];
   onClick: () => void;
 }) {
-  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+  const ICON_MAP: Record<string, React.ComponentType<{ style?: React.CSSProperties }>> = {
     'layout-grid': LayoutDashboard,
-    'code': Code,
-    'briefcase': Briefcase,
+    code: Code,
+    briefcase: Briefcase,
     'book-open': BookOpen,
-    'heart': Heart,
-    'gamepad2': Gamepad2,
+    heart: Heart,
+    gamepad2: Gamepad2,
   };
-
-  const Icon = icons[workspace.icon] || LayoutDashboard;
+  const Icon = ICON_MAP[workspace.icon] || LayoutDashboard;
 
   return (
     <button
       onClick={onClick}
-      className="btn-secondary px-4 py-2 flex items-center gap-2 min-w-[200px] justify-center"
+      aria-label={`Switch workspace: ${workspace.name}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        height: '34px',
+        padding: '0 0.875rem',
+        backgroundColor: 'var(--color-surface-elevated)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        cursor: 'pointer',
+        transition: 'all 150ms ease',
+        fontSize: '0.8125rem',
+        fontWeight: 500,
+        color: 'var(--color-text)',
+        maxWidth: '240px',
+        minWidth: '160px',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.borderColor =
+          'var(--color-border-strong)';
+        (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+          'var(--color-surface-hover)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.borderColor =
+          'var(--color-border)';
+        (e.currentTarget as HTMLButtonElement).style.backgroundColor =
+          'var(--color-surface-elevated)';
+      }}
     >
-      <Icon className="w-4 h-4" />
-      <span className="truncate font-medium">{workspace.name}</span>
-      <ChevronDown className="w-4 h-4 ml-auto" />
+      <Icon
+        style={{
+          width: '14px',
+          height: '14px',
+          color: 'var(--color-text-secondary)',
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          textAlign: 'left',
+        }}
+      >
+        {workspace.name}
+      </span>
+      <ChevronDown
+        style={{
+          width: '14px',
+          height: '14px',
+          color: 'var(--color-text-muted)',
+          flexShrink: 0,
+        }}
+      />
     </button>
   );
 }
 
-function Footer({
-  workspace,
-  widgetCount,
-}: {
-  workspace: import('../types').Workspace;
-  widgetCount: number;
-}) {
+/* ─────────────────────────────────────────────────────────────
+   Footer — minimal, 40px, keyboard shortcuts hint
+───────────────────────────────────────────────────────────── */
+function Footer({ widgetCount }: { widgetCount: number }) {
   const { workspaces } = useWorkspaceStore();
   const [storageUsed, setStorageUsed] = useState<string | null>(null);
 
@@ -566,26 +808,66 @@ function Footer({
         setStorageUsed(mb < 0.01 ? '< 0.01 MB' : `${mb.toFixed(2)} MB`);
       }
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [widgetCount]);
+
   return (
-    <footer className="border-t border-border px-6 py-3 bg-surface/50 backdrop-blur-sm">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 text-body-xs text-text-muted">
-        <div className="flex items-center gap-4">
+    <footer
+      style={{
+        height: 'var(--footer-height)',
+        display: 'flex',
+        alignItems: 'center',
+        borderTop: '1px solid var(--color-border)',
+        backgroundColor: 'color-mix(in srgb, var(--color-surface) 70%, transparent)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        padding: '0 1.5rem',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          maxWidth: '1440px',
+          margin: '0 auto',
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          fontSize: '0.6875rem',
+          color: 'var(--color-text-muted)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           {storageUsed && (
-            <>
-              <span>Storage: <span className="text-text">{storageUsed}</span></span>
-              <span className="hidden sm:inline">|</span>
-            </>
+            <span>
+              Storage:{' '}
+              <span style={{ color: 'var(--color-text-secondary)' }}>{storageUsed}</span>
+            </span>
           )}
-          <span>Workspaces: <span className="text-text">{workspaces.length}</span></span>
-          <span className="hidden sm:inline">|</span>
-          <span>Active Widgets: <span className="text-text">{widgetCount}</span></span>
+          <span>
+            {workspaces.length} workspace{workspaces.length !== 1 ? 's' : ''}
+          </span>
+          <span>
+            {widgetCount} widget{widgetCount !== 1 ? 's' : ''}
+          </span>
         </div>
-        <div className="flex items-center gap-4">
-          <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-text">Ctrl+K</kbd> Search
-          <span className="hidden sm:inline">|</span>
-          <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-text">Ctrl+E</kbd> Edit
+
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+          aria-label="Keyboard shortcuts"
+        >
+          <span>
+            <kbd>Ctrl+K</kbd> Search
+          </span>
+          <span>
+            <kbd>Ctrl+E</kbd> Edit
+          </span>
+          <span>
+            <kbd>Ctrl+,</kbd> Settings
+          </span>
         </div>
       </div>
     </footer>

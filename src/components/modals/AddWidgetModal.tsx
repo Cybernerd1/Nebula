@@ -1,8 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, Plus, ChevronRight, Check, Clock, Sun, Search as SearchIcon, Quote, CheckSquare, Folder, Link, Calendar, Timer, Target, BarChart2, BookOpen, FileText, Bell, Layers, CloudSun, History, Globe } from 'lucide-react';
+import {
+  X, Search, Plus, Clock, Sun, Search as SearchIcon, Quote,
+  CheckSquare, Folder, Link, Timer, Target, BarChart2, FileText,
+  Layers, CloudSun, Globe, Calendar,
+} from 'lucide-react';
 import { cn } from '../../utils/helpers';
-import { getWidgetsByCategory, getWidgetCategories, getWidgetDefinition, getRegisteredWidgets } from '../../widgets';
+import { getWidgetCategories, getRegisteredWidgets } from '../../widgets';
 import { useDashboardStore } from '../../stores/dashboard.store';
 import type { WidgetCategory } from '../../types';
 
@@ -11,17 +15,19 @@ interface AddWidgetModalProps {
   onClose: () => void;
 }
 
-const categoryIcons: Record<WidgetCategory, React.ComponentType<{ className?: string }>> = {
-  time: Clock,
-  productivity: CheckSquare,
-  search: SearchIcon,
-  information: Quote,
-  media: Globe,
-  custom: Layers,
+const CATEGORY_LABELS: Record<WidgetCategory | 'all', string> = {
+  all: 'All',
+  time: 'Time',
+  productivity: 'Productivity',
+  search: 'Search',
+  information: 'Info',
+  media: 'Media',
+  custom: 'Custom',
 };
 
-const widgetIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+const WIDGET_ICONS: Record<string, React.ComponentType<{ style?: React.CSSProperties; 'aria-hidden'?: boolean }>> = {
   clock: Clock,
+  date: Calendar,
   greeting: Sun,
   search: SearchIcon,
   quote: Quote,
@@ -29,38 +35,65 @@ const widgetIcons: Record<string, React.ComponentType<{ className?: string }>> =
   collections: Folder,
   quicklinks: Link,
   weather: CloudSun,
-  calendar: Calendar,
   pomodoro: Timer,
-  worldclock: Globe,
-  focus: Target,
-  stats: BarChart2,
-  bookmarks: BookOpen,
-  recent: History,
-  notes: FileText,
-  customtext: FileText,
-  focusgoals: Target,
+  worldClock: Globe,
+  focusTimer: Timer,
   countdown: Timer,
+  notes: FileText,
+  customText: FileText,
+  dailyFocus: Target,
+  productivityStats: BarChart2,
 };
 
 export function AddWidgetModal({ isOpen, onClose }: AddWidgetModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<WidgetCategory | 'all'>('all');
   const { addWidget } = useDashboardStore();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const categories = getWidgetCategories();
-  const allWidgets = useMemo(() => {
-    let widgets = getRegisteredWidgets();
-    if (selectedCategory !== 'all') {
-      widgets = widgets.filter((w) => w.category === selectedCategory);
+
+  /* Auto-focus search on open */
+  useEffect(() => {
+    if (isOpen) {
+      const t = setTimeout(() => searchRef.current?.focus(), 60);
+      return () => clearTimeout(t);
     }
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      widgets = widgets.filter((w) =>
-        w.name.toLowerCase().includes(query) ||
-        w.description.toLowerCase().includes(query)
+  }, [isOpen]);
+
+  /* Escape closes */
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [isOpen, onClose]);
+
+  /* Reset state on close */
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('');
+      setSelectedCategory('all');
+    }
+  }, [isOpen]);
+
+  const filteredWidgets = useMemo(() => {
+    let list = getRegisteredWidgets();
+    if (selectedCategory !== 'all') {
+      list = list.filter((w) => w.category === selectedCategory);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (w) =>
+          w.name.toLowerCase().includes(q) ||
+          w.description.toLowerCase().includes(q)
       );
     }
-    return widgets;
+    return list;
   }, [selectedCategory, searchQuery]);
 
   if (!isOpen) return null;
@@ -68,81 +101,142 @@ export function AddWidgetModal({ isOpen, onClose }: AddWidgetModalProps) {
   return (
     <AnimatePresence>
       <motion.div
+        key="add-widget-backdrop"
+        className="modal-backdrop"
+        style={{ zIndex: 200, alignItems: 'center' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        transition={{ duration: 0.15 }}
         onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add widget"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          ref={panelRef}
+          className="modal-panel"
+          style={{ width: '100%', maxWidth: '680px' }}
+          initial={{ opacity: 0, scale: 0.97, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="w-full max-w-4xl max-h-[85vh] bg-surface-elevated border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          exit={{ opacity: 0, scale: 0.97, y: 8 }}
+          transition={{ duration: 0.18, ease: [0, 0, 0.2, 1] }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between p-6 border-b border-border">
-            <h2 className="text-heading-lg font-bold text-text">Add Widget</h2>
-            <button onClick={onClose} className="btn-icon p-2 text-text-muted hover:text-text">
-              <X className="w-5 h-5" />
+          {/* Header */}
+          <div className="modal-header">
+            <h2 className="modal-title">Add Widget</h2>
+            <button
+              onClick={onClose}
+              className="btn-icon"
+              aria-label="Close"
+              style={{ marginLeft: 'auto' }}
+            >
+              <X style={{ width: '16px', height: '16px' }} />
             </button>
           </div>
 
-          <div className="p-6 border-b border-border">
-            <div className="relative mb-4">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+          {/* Search + filter */}
+          <div
+            style={{
+              padding: '0.875rem 1.5rem 0.75rem',
+              borderBottom: '1px solid var(--color-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.625rem',
+            }}
+          >
+            {/* Search input */}
+            <div style={{ position: 'relative' }}>
+              <Search
+                style={{
+                  position: 'absolute',
+                  left: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: '15px',
+                  height: '15px',
+                  color: 'var(--color-text-muted)',
+                  pointerEvents: 'none',
+                }}
+                aria-hidden
+              />
               <input
+                ref={searchRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search widgets..."
-                className="w-full pl-12 pr-4 py-3 bg-surface border border-border rounded-xl text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                autoFocus
+                placeholder="Search widgets…"
+                className="input"
+                style={{ paddingLeft: '2.25rem', height: '36px' }}
+                aria-label="Search widgets"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={cn(
-                  'px-4 py-2 rounded-lg text-body-sm font-medium whitespace-nowrap transition-all',
-                  selectedCategory === 'all'
-                    ? 'bg-primary text-white'
-                    : 'bg-surface hover:bg-surface-hover text-text'
-                )}
-              >
-                All
-              </button>
-              {categories.map((cat) => {
-                const CategoryIcon = categoryIcons[cat];
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={cn(
-                      'px-4 py-2 rounded-lg text-body-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
+
+            {/* Category tabs */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.25rem',
+                overflowX: 'auto',
+                paddingBottom: '2px',
+              }}
+              className="no-scrollbar"
+              role="tablist"
+              aria-label="Widget categories"
+            >
+              {(['all', ...categories] as (WidgetCategory | 'all')[]).map((cat) => (
+                <button
+                  key={cat}
+                  role="tab"
+                  aria-selected={selectedCategory === cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{
+                    height: '28px',
+                    padding: '0 0.75rem',
+                    borderRadius: 'var(--radius-full)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                    transition: 'all 150ms ease',
+                    backgroundColor:
                       selectedCategory === cat
-                        ? 'bg-primary text-white'
-                        : 'bg-surface hover:bg-surface-hover text-text'
-                    )}
-                  >
-                    <CategoryIcon className="w-4 h-4" />
-                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                  </button>
-                );
-              })}
+                        ? 'var(--color-primary)'
+                        : 'var(--color-surface-secondary)',
+                    color:
+                      selectedCategory === cat
+                        ? '#ffffff'
+                        : 'var(--color-text-secondary)',
+                  }}
+                >
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            {allWidgets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-text-muted">
-                <Search className="w-12 h-12 mb-4 opacity-50" />
-                <p className="text-body-lg">No widgets found</p>
-                <p className="text-body-sm">Try a different search or category</p>
+          {/* Widget grid */}
+          <div
+            className="modal-body scrollbar-thin"
+            style={{ maxHeight: '420px', padding: '1rem 1.5rem' }}
+          >
+            {filteredWidgets.length === 0 ? (
+              <div className="empty-state" style={{ height: '200px' }}>
+                <Search style={{ width: '32px', height: '32px' }} aria-hidden />
+                <p className="empty-state-title">No widgets found</p>
+                <p className="empty-state-description">Try a different search or category</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {allWidgets.map((widget) => (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                  gap: '0.5rem',
+                }}
+              >
+                {filteredWidgets.map((widget) => (
                   <WidgetCard
                     key={widget.type}
                     widget={widget}
@@ -154,6 +248,24 @@ export function AddWidgetModal({ isOpen, onClose }: AddWidgetModalProps) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Footer note */}
+          <div
+            style={{
+              padding: '0.625rem 1.5rem',
+              borderTop: '1px solid var(--color-border)',
+              fontSize: '0.6875rem',
+              color: 'var(--color-text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>
+              {filteredWidgets.length} widget{filteredWidgets.length !== 1 ? 's' : ''}
+            </span>
+            <span>Click a widget to add it to your workspace</span>
           </div>
         </motion.div>
       </motion.div>
@@ -168,26 +280,98 @@ function WidgetCard({
   widget: import('../../types').WidgetDefinition;
   onAdd: () => void;
 }) {
-  const Icon = widgetIcons[widget.type] || Layers;
+  const Icon = WIDGET_ICONS[widget.type] || Layers;
 
   return (
     <button
       onClick={onAdd}
-      className="group p-4 bg-surface border border-border rounded-xl hover:border-primary/50 hover:shadow-lg transition-all duration-normal flex flex-col h-full"
+      title={`Add ${widget.name}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '0.5rem',
+        padding: '0.75rem',
+        borderRadius: 'var(--radius-lg)',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'all 150ms ease',
+        height: '100%',
+      }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget;
+        el.style.borderColor = 'var(--color-primary)';
+        el.style.backgroundColor = 'var(--color-primary-muted)';
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget;
+        el.style.borderColor = 'var(--color-border)';
+        el.style.backgroundColor = 'var(--color-surface)';
+      }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="p-3 bg-primary/20 rounded-xl text-primary">
-          <Icon className="w-6 h-6" />
-        </div>
-        <span className="text-body-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-          <Plus className="w-4 h-4" />
-        </span>
+      {/* Icon */}
+      <div
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: 'var(--radius-md)',
+          backgroundColor: 'var(--color-primary-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Icon
+          style={{ width: '16px', height: '16px', color: 'var(--color-primary)' }}
+          aria-hidden
+        />
       </div>
-      <h3 className="font-semibold text-text mb-1">{widget.name}</h3>
-      <p className="text-body-sm text-text-muted flex-1">{widget.description}</p>
-      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
-        <span className="badge badge-primary text-xs">{widget.category}</span>
-        <span className="ml-auto text-body-xs text-text-muted">
+
+      {/* Name + description */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.8125rem',
+            fontWeight: 600,
+            color: 'var(--color-text)',
+            marginBottom: '0.1875rem',
+            lineHeight: 1.3,
+          }}
+        >
+          {widget.name}
+        </div>
+        <div
+          className="truncate-2"
+          style={{
+            fontSize: '0.6875rem',
+            color: 'var(--color-text-muted)',
+            lineHeight: 1.4,
+          }}
+        >
+          {widget.description}
+        </div>
+      </div>
+
+      {/* Category badge */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          marginTop: 'auto',
+        }}
+      >
+        <span className="badge badge-neutral" style={{ fontSize: '0.625rem' }}>
+          {widget.category}
+        </span>
+        <span
+          style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)' }}
+          aria-label={`Default size ${widget.defaultSize.w} by ${widget.defaultSize.h}`}
+        >
           {widget.defaultSize.w}×{widget.defaultSize.h}
         </span>
       </div>

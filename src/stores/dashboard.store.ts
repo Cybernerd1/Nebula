@@ -18,6 +18,48 @@ function layoutsEquivalent(a: GridLayoutItem[], b: GridLayoutItem[]): boolean {
   });
 }
 
+// Grid column count used for position clamping (matches the default layout)
+const GRID_MAX_COLS = 12;
+const GRID_MAX_ROWS = 48;
+
+function clampValue(value: unknown, min: number, max: number, fallback: number): number {
+  const num = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.round(Math.min(Math.max(num, min), Math.max(min, max)));
+}
+
+// Clamp a widget's persisted geometry to its definition's bounds. Corrupted
+// or out-of-range data (e.g. a clock persisted as 1x1, under its 3x2 minimum)
+// previously reached the grid untouched and broke the layout.
+function sanitizeWidgetGeometry(
+  widget: WidgetConfig,
+  definitions: Map<string, WidgetDefinition>,
+): WidgetConfig {
+  const def = definitions.get(widget.type);
+  const fallbackW = def?.defaultSize?.w ?? 4;
+  const fallbackH = def?.defaultSize?.h ?? 3;
+  const minW = def?.minSize?.w ?? fallbackW;
+  const minH = def?.minSize?.h ?? fallbackH;
+  const maxW = def?.maxSize?.w ?? GRID_MAX_COLS;
+  const maxH = def?.maxSize?.h ?? GRID_MAX_ROWS;
+
+  const w = clampValue(widget.size?.w, minW, maxW, fallbackW);
+  const h = clampValue(widget.size?.h, minH, maxH, fallbackH);
+  const x = clampValue(widget.position?.x, 0, GRID_MAX_COLS - w, 0);
+  const y = clampValue(widget.position?.y, 0, GRID_MAX_ROWS, 0);
+
+  if (
+    widget.size?.w === w && widget.size?.h === h &&
+    widget.position?.x === x && widget.position?.y === y
+  ) {
+    return widget;
+  }
+  return {
+    ...widget,
+    size: { ...widget.size, w, h },
+    position: { ...widget.position, x, y },
+  };
+}
+
 interface DashboardState {
   isEditing: boolean;
   editingWidgetId: string | null;
@@ -61,7 +103,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   // Rebuild the RGL layout from the active workspace's widgets (used on init
   // and whenever the workspace's widget list changes externally)
   rebuildLayout: (widgets) => {
-    const layout: GridLayoutItem[] = widgets.map((w) => ({
+    const definitions = get().widgetDefinitions;
+
+    // Repair pass: write clamped geometry back to the workspace so corrupted
+    // persisted sizes heal automatically on the next save
+    const sanitized = widgets.map((w) => sanitizeWidgetGeometry(w, definitions));
+    if (sanitized.some((w, i) => w !== widgets[i])) {
+      const { activeWorkspaceId } = useWorkspaceStore.getState();
+      const workspace = activeWorkspaceId
+        ? useWorkspaceStore.getState().workspaces.find((ws) => ws.id === activeWorkspaceId)
+        : null;
+      if (workspace) {
+        useWorkspaceStore.getState().updateWorkspace(workspace.id, { widgets: sanitized });
+      }
+    }
+
+    const layout: GridLayoutItem[] = sanitized.map((w) => ({
       i: w.id,
       x: w.position.x,
       y: w.position.y,
@@ -87,9 +144,30 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     const { activeWorkspaceId } = useWorkspaceStore.getState();
     if (!activeWorkspaceId) return;
 
-    if (layoutsEquivalent(get().layout, [...layout])) return;
+    const workspace = useWorkspaceStore.getState().workspaces.find((ws) => ws.id === activeWorkspaceId);
+    if (!workspace) return;
 
-    set({ layout: [...layout] });
+    // Clamp emitted items against each widget's definition bounds so nothing
+    // below minimum size (or out of grid range) can ever be persisted
+    const definitions = get().widgetDefinitions;
+    const clamped: GridLayoutItem[] = layout.map((item) => {
+      const widget = workspace.widgets.find((w) => w.id === item.i);
+      if (!widget) return item;
+      const def = definitions.get(widget.type);
+      const minW = def?.minSize?.w ?? widget.minSize?.w ?? 1;
+      const minH = def?.minSize?.h ?? widget.minSize?.h ?? 1;
+      const maxW = def?.maxSize?.w ?? widget.maxSize?.w ?? GRID_MAX_COLS;
+      const maxH = def?.maxSize?.h ?? widget.maxSize?.h ?? GRID_MAX_ROWS;
+      const w = clampValue(item.w, minW, maxW, minW);
+      const h = clampValue(item.h, minH, maxH, minH);
+      const x = clampValue(item.x, 0, GRID_MAX_COLS - w, 0);
+      const y = clampValue(item.y, 0, GRID_MAX_ROWS, 0);
+      return { ...item, w, h, x, y };
+    });
+
+    if (layoutsEquivalent(get().layout, clamped)) return;
+
+    set({ layout: clamped });
 
     // Persist widget positions/sizes on the workspace (debounced to avoid
     // thrashing state while the user is actively dragging)
@@ -102,7 +180,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       useWorkspaceStore.getState().updateWorkspace(wsId, {
         widgets: workspace.widgets.map((w) => {
-          const item = layout.find((l) => l.i === w.id);
+          const item = clamped.find((l) => l.i === w.id);
           if (!item) return w;
           return {
             ...w,
@@ -145,11 +223,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     const maxOrder = Math.max(0, ...workspace.widgets.map((w) => w.order));
     const newOrder = maxOrder + 1;
 
+    // Stack new widgets below the lowest one — a placeholder row count does
+    // not track actual widget heights and causes overlaps
+    const maxYBottom = workspace.widgets.reduce(
+      (max, w) => Math.max(max, (w.position?.y ?? 0) + (w.size?.h ?? 0)),
+      0,
+    );
+
     const widgetConfig: WidgetConfig = {
       id: newId,
       type,
       enabled: true,
-      position: position || { x: 0, y: workspace.widgets.length * 2 },
+      position: position || { x: 0, y: maxYBottom },
       size: { ...definition.defaultSize },
       minSize: { ...definition.minSize },
       maxSize: { ...definition.maxSize },
@@ -373,24 +458,3 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 }));
 
-export const useDashboardStoreSync = () => {
-  const { workspaces, activeWorkspaceId } = useWorkspaceStore();
-  const workspace = workspaces.find((ws) => ws.id === activeWorkspaceId);
-  return workspace ? {
-    layout: workspace.widgets.map((w) => ({
-      i: w.id,
-      x: w.position.x,
-      y: w.position.y,
-      w: w.size.w,
-      h: w.size.h,
-      minW: w.minSize?.w,
-      minH: w.minSize?.h,
-      maxW: w.maxSize?.w,
-      maxH: w.maxSize?.h,
-      isDraggable: true,
-      isResizable: true,
-      resizeHandles: ['se', 'e', 's'] as const,
-    })),
-    hiddenWidgets: new Set(workspace.widgets.filter((w) => w.hidden).map((w) => w.id)),
-  } : { layout: [], hiddenWidgets: new Set() };
-};

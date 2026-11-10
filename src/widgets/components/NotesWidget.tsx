@@ -1,65 +1,69 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { cn } from '../../utils/helpers';
-import { StickyNote, Settings, Save, Bold, Italic, Underline, Strikethrough, List, ListOrdered, Quote, Code, Undo, Redo, Trash2, Download, AlertCircle, Check } from 'lucide-react';
+import {
+  StickyNote, Download, Trash2, Bold, Italic, Underline,
+  Strikethrough, List, ListOrdered, Undo, Redo, AlertCircle, Check,
+} from 'lucide-react';
 import type { WidgetProps } from '../../types';
 import type { NotesWidgetSettings } from '../schemas';
 
 export function NotesWidget({ config, onConfigChange, onRemove }: WidgetProps) {
   const settings = config.settings as NotesWidgetSettings;
-  const [content, setContent] = useState(settings.defaultContent);
-  const [wordCount, setWordCount] = useState(0);
-  const [charCount, setCharCount] = useState(0);
+  const [content, setContent] = useState(settings.defaultContent ?? '');
   const [saved, setSaved] = useState(true);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [charCount, setCharCount] = useState(0);
   const editorRef = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* Sync content from settings on external change */
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== settings.defaultContent) {
+      editorRef.current.innerHTML = settings.defaultContent ?? '';
+      setContent(settings.defaultContent ?? '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    setContent(settings.defaultContent);
-  }, [settings.defaultContent]);
-
-  useEffect(() => {
-    const words = content.trim() ? content.trim().split(/\s+/).length : 0;
-    setWordCount(words);
-    setCharCount(content.length);
+    setCharCount(editorRef.current?.innerText.length ?? 0);
   }, [content]);
 
+  const saveContent = useCallback((html: string) => {
+    onConfigChange({ defaultContent: html });
+    setSaved(true);
+  }, [onConfigChange]);
+
   const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
-    const newContent = e.currentTarget.innerHTML;
-    setContent(newContent);
+    const html = e.currentTarget.innerHTML;
+    setContent(html);
     setSaved(false);
-
     if (settings.autoSave) {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(() => {
-        onConfigChange({ defaultContent: newContent });
-        setSaved(true);
-      }, settings.saveDelay);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveContent(html), settings.saveDelay ?? 1500);
     }
-  }, [settings.autoSave, settings.saveDelay, onConfigChange]);
-
-  const executeCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
-    editorRef.current?.focus();
-  };
+  }, [settings.autoSave, settings.saveDelay, saveContent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
-      onConfigChange({ defaultContent: content });
-      setSaved(true);
+      if (editorRef.current) saveContent(editorRef.current.innerHTML);
     }
   };
 
-  const clearContent = () => {
-    if (confirm('Clear all notes?')) {
-      setContent('');
-      onConfigChange({ defaultContent: '' });
-      setSaved(true);
-    }
+  const exec = (cmd: string, val?: string) => {
+    document.execCommand(cmd, false, val);
+    editorRef.current?.focus();
   };
 
-  const downloadNotes = () => {
-    const text = editorRef.current?.innerText || '';
+  const clear = () => {
+    if (!confirm('Clear all notes?')) return;
+    if (editorRef.current) editorRef.current.innerHTML = '';
+    setContent('');
+    saveContent('');
+  };
+
+  const download = () => {
+    const text = editorRef.current?.innerText ?? '';
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -69,135 +73,189 @@ export function NotesWidget({ config, onConfigChange, onRemove }: WidgetProps) {
     URL.revokeObjectURL(url);
   };
 
+  const ToolBtn = ({
+    onClick,
+    title,
+    children,
+  }: {
+    onClick: () => void;
+    title: string;
+    children: React.ReactNode;
+  }) => (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      title={title}
+      aria-label={title}
+      style={{
+        width: '26px',
+        height: '26px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 'var(--radius-sm)',
+        border: 'none',
+        backgroundColor: 'transparent',
+        color: 'var(--color-text-secondary)',
+        cursor: 'pointer',
+        transition: 'background-color 100ms ease, color 100ms ease',
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--color-surface-hover)';
+        (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+        (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-secondary)';
+      }}
+    >
+      {children}
+    </button>
+  );
+
   return (
-    <div className={cn('widget notes-widget h-full flex flex-col', settings.compactMode && 'compact')}>
-      <div className="widget-header flex items-center justify-between p-4">
-        <h3 className="font-semibold text-text flex items-center gap-2">
-          <StickyNote className="w-5 h-5" />
+    <div className={cn('widget-card', 'notes-widget')} style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header */}
+      <div
+        className="widget-header"
+        style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}
+      >
+        <span className="widget-title">
+          <StickyNote aria-hidden />
           Notes
-        </h3>
-        <div className="flex items-center gap-1">
+        </span>
+        <div className="widget-actions">
           {settings.showWordCount && (
-            <span className="text-body-xs text-text-muted px-2 py-1 bg-surface-elevated rounded">
-              {wordCount} words · {charCount} chars
+            <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+              {charCount}c
             </span>
           )}
-          <button onClick={downloadNotes} className="p-1.5 hover:bg-surface-elevated rounded-lg transition-colors" title="Download">
-            <Download className="w-4 h-4" />
+          {!saved && (
+            <span style={{ fontSize: '0.6875rem', color: 'var(--color-warning)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              <AlertCircle style={{ width: '10px', height: '10px' }} aria-hidden />
+              Unsaved
+            </span>
+          )}
+          {saved && content && (
+            <span style={{ fontSize: '0.6875rem', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              <Check style={{ width: '10px', height: '10px' }} aria-hidden />
+              Saved
+            </span>
+          )}
+          <button onClick={download} className="btn-icon" aria-label="Download notes" title="Download as text">
+            <Download style={{ width: '13px', height: '13px' }} />
           </button>
-          <button onClick={clearContent} className="p-1.5 hover:bg-surface-elevated rounded-lg transition-colors text-error" title="Clear">
-            <Trash2 className="w-4 h-4" />
-          </button>
-          <button className="p-1.5 hover:bg-surface-elevated rounded-lg transition-colors" title="Settings">
-            <Settings className="w-4 h-4" />
+          <button onClick={clear} className="btn-icon" aria-label="Clear notes" title="Clear all notes" style={{ color: 'var(--color-error)' }}>
+            <Trash2 style={{ width: '13px', height: '13px' }} />
           </button>
         </div>
       </div>
 
+      {/* Formatting toolbar */}
       {settings.showToolbar && (
-        <div className="flex flex-wrap items-center gap-1 p-2 border-b border-border bg-surface-elevated/50">
-          <button onClick={() => executeCommand('bold')} className="p-1.5 hover:bg-surface rounded" title="Bold (Ctrl+B)">
-            <Bold className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('italic')} className="p-1.5 hover:bg-surface rounded" title="Italic (Ctrl+I)">
-            <Italic className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('underline')} className="p-1.5 hover:bg-surface rounded" title="Underline (Ctrl+U)">
-            <Underline className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('strikeThrough')} className="p-1.5 hover:bg-surface rounded" title="Strikethrough">
-            <Strikethrough className="w-4 h-4" />
-          </button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <button onClick={() => executeCommand('insertUnorderedList')} className="p-1.5 hover:bg-surface rounded" title="Bullet List">
-            <List className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('insertOrderedList')} className="p-1.5 hover:bg-surface rounded" title="Numbered List">
-            <ListOrdered className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('formatBlock', 'blockquote')} className="p-1.5 hover:bg-surface rounded" title="Quote">
-            <Quote className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('formatBlock', 'pre')} className="p-1.5 hover:bg-surface rounded" title="Code Block">
-            <Code className="w-4 h-4" />
-          </button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <button onClick={() => executeCommand('undo')} className="p-1.5 hover:bg-surface rounded" title="Undo (Ctrl+Z)">
-            <Undo className="w-4 h-4" />
-          </button>
-          <button onClick={() => executeCommand('redo')} className="p-1.5 hover:bg-surface rounded" title="Redo (Ctrl+Y)">
-            <Redo className="w-4 h-4" />
-          </button>
-          <div className="flex-1" />
-          {!saved && (
-            <span className="text-body-xs text-warning flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" /> Unsaved
-            </span>
-          )}
-          {saved && (
-            <span className="text-body-xs text-success flex items-center gap-1">
-              <Check className="w-3 h-3" /> Saved
-            </span>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '1px',
+            padding: '0.25rem 0.5rem',
+            borderBottom: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-surface-secondary)',
+            flexShrink: 0,
+          }}
+          role="toolbar"
+          aria-label="Text formatting"
+        >
+          <ToolBtn onClick={() => exec('bold')} title="Bold (Ctrl+B)">
+            <Bold style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+          <ToolBtn onClick={() => exec('italic')} title="Italic (Ctrl+I)">
+            <Italic style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+          <ToolBtn onClick={() => exec('underline')} title="Underline (Ctrl+U)">
+            <Underline style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+          <ToolBtn onClick={() => exec('strikeThrough')} title="Strikethrough">
+            <Strikethrough style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+
+          <div style={{ width: '1px', backgroundColor: 'var(--color-border)', margin: '0 2px', alignSelf: 'stretch' }} aria-hidden />
+
+          <ToolBtn onClick={() => exec('insertUnorderedList')} title="Bullet list">
+            <List style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+          <ToolBtn onClick={() => exec('insertOrderedList')} title="Numbered list">
+            <ListOrdered style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+
+          <div style={{ width: '1px', backgroundColor: 'var(--color-border)', margin: '0 2px', alignSelf: 'stretch' }} aria-hidden />
+
+          <ToolBtn onClick={() => exec('undo')} title="Undo (Ctrl+Z)">
+            <Undo style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+          <ToolBtn onClick={() => exec('redo')} title="Redo (Ctrl+Y)">
+            <Redo style={{ width: '12px', height: '12px' }} />
+          </ToolBtn>
+
+          {!settings.autoSave && (
+            <>
+              <div style={{ flex: 1 }} aria-hidden />
+              <ToolBtn onClick={() => editorRef.current && saveContent(editorRef.current.innerHTML)} title="Save (Ctrl+S)">
+                <Check style={{ width: '12px', height: '12px' }} />
+              </ToolBtn>
+            </>
           )}
         </div>
       )}
 
+      {/* Editor */}
       <div
         ref={editorRef}
-        className="flex-1 p-4 overflow-y-auto outline-none notes-editor"
         contentEditable
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         style={{
-          fontSize: `${settings.fontSize}px`,
-          fontFamily: settings.fontFamily,
-          lineHeight: 1.6,
+          flex: 1,
+          padding: '0.75rem',
+          overflowY: 'auto',
+          outline: 'none',
+          fontSize: `${settings.fontSize ?? 14}px`,
+          fontFamily: settings.fontFamily || 'var(--font-sans)',
+          lineHeight: 1.65,
+          color: 'var(--color-text)',
+          minHeight: 0,
         }}
-        data-placeholder="Start typing your notes..."
+        className="scrollbar-thin notes-editor"
+        role="textbox"
+        aria-label="Notes editor"
+        aria-multiline="true"
+        data-placeholder="Start typing…"
       />
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .notes-widget .notes-editor:empty:before {
+      {/* Scoped styles for the editor */}
+      <style>{`
+        .notes-editor:empty::before {
           content: attr(data-placeholder);
           color: var(--color-text-muted);
           pointer-events: none;
         }
-        .notes-widget .notes-editor {
-          min-height: 100%;
-        }
-        .notes-widget .notes-editor p {
-          margin: 0 0 0.5em 0;
-        }
-        .notes-widget .notes-editor ul,
-        .notes-widget .notes-editor ol {
-          margin: 0.5em 0;
-          padding-left: 1.5em;
-        }
-        .notes-widget .notes-editor blockquote {
-          border-left: 3px solid var(--color-primary);
-          padding-left: 1em;
-          margin: 0.5em 0;
+        .notes-editor p { margin: 0 0 0.4em; }
+        .notes-editor ul, .notes-editor ol { margin: 0.4em 0; padding-left: 1.5em; }
+        .notes-editor blockquote {
+          border-left: 2px solid var(--color-primary);
+          padding-left: 0.75em;
+          margin: 0.4em 0;
           color: var(--color-text-muted);
           font-style: italic;
         }
-        .notes-widget .notes-editor pre {
-          background: var(--color-surface-elevated);
-          padding: 1em;
-          border-radius: 0.5rem;
-          overflow-x: auto;
-          margin: 0.5em 0;
-          font-family: monospace;
-          font-size: 0.9em;
-        }
-        .notes-widget .notes-editor code {
-          background: var(--color-surface-elevated);
+        .notes-editor pre, .notes-editor code {
+          background: var(--color-surface-secondary);
           padding: 0.1em 0.3em;
-          border-radius: 0.25rem;
-          font-family: monospace;
+          border-radius: var(--radius-xs);
+          font-family: var(--font-mono);
           font-size: 0.9em;
         }
-      `}} />
+      `}</style>
     </div>
   );
 }

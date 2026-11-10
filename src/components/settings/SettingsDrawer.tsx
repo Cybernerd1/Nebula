@@ -1,6 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sun, Moon, Monitor, Palette, Image, Grid, Keyboard, Download, Upload, RefreshCw, Trash2, Copy, ChevronRight, ChevronLeft, Plus, Sparkles, Paintbrush, Layers, LayoutDashboard, Bell, HelpCircle, Info, Settings as SettingsIcon, HardDrive, Cloud, Share2, RotateCcw, Eye, EyeOff, SlidersHorizontal, Zap, Shield, Hash, Type, Contrast, Maximize2, Minimize2, Search, Star, Code, Briefcase, BookOpen, Heart, Gamepad2, Check, Folder, Link, Globe, ChevronDown, ChevronUp, MoreVertical, Settings, EyeOff as EyeOffIcon, Trash2 as Trash2Icon } from 'lucide-react';
+import {
+  X, Palette, Image, Grid, Search, EyeOff, Keyboard, HardDrive,
+  LayoutDashboard, Plus, Download, Upload, RotateCcw, Cloud, Trash2,
+  Copy, Star, Check, Paintbrush, Sun, Moon, Monitor,
+  Code, Briefcase, BookOpen, Heart, Gamepad2,
+} from 'lucide-react';
 import { cn } from '../../utils/helpers';
 import { useWorkspaceStore } from '../../stores/workspace.store';
 import { useSettingsStore } from '../../stores/settings.store';
@@ -14,84 +19,214 @@ interface SettingsDrawerProps {
   onClose: () => void;
 }
 
+const NAV_SECTIONS = [
+  { id: 'appearance', label: 'Appearance',  Icon: Palette },
+  { id: 'themes',     label: 'Themes',      Icon: Paintbrush },
+  { id: 'wallpapers', label: 'Wallpapers',  Icon: Image },
+  { id: 'layout',     label: 'Layout',      Icon: Grid },
+  { id: 'search',     label: 'Search',      Icon: Search },
+  { id: 'hidden',     label: 'Visibility',  Icon: EyeOff },
+  { id: 'shortcuts',  label: 'Shortcuts',   Icon: Keyboard },
+  { id: 'data',       label: 'Data',        Icon: HardDrive },
+  { id: 'workspaces', label: 'Workspaces',  Icon: LayoutDashboard },
+] as const;
+
+type SectionId = typeof NAV_SECTIONS[number]['id'];
+
 export function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
-  const [activeSection, setActiveSection] = useState<string>('appearance');
+  const [activeSection, setActiveSection] = useState<SectionId>('appearance');
 
-  const { settings, updateAppearance, updateThemes, updateWallpapers, updateLayout, updateSearch, updateHidden, updateShortcuts, updateData, applyTheme, addCustomTheme, removeCustomTheme, toggleHiddenWidget, toggleHiddenCollection, exportSettings, importSettings, resetSettings } = useSettingsStore();
-  const { workspaces, activeWorkspaceId, createWorkspace, updateWorkspace, deleteWorkspace, duplicateWorkspace, setActiveWorkspace, setDefaultWorkspace, exportWorkspace, importWorkspace } = useWorkspaceStore();
-  const { hiddenWidgets, layout } = useDashboardStore();
-  const { hideWidget, showWidget } = useDashboardStore();
-  const activeWorkspaceWidgets = workspaces.find((ws) => ws.id === activeWorkspaceId)?.widgets ?? [];
+  const {
+    settings,
+    updateAppearance, updateThemes, updateWallpapers, updateLayout,
+    updateSearch, updateHidden, updateShortcuts, updateData,
+    applyTheme, addCustomTheme, removeCustomTheme,
+    exportSettings, importSettings, resetSettings,
+  } = useSettingsStore();
 
-  const sections = [
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'themes', label: 'Themes', icon: Paintbrush },
-    { id: 'wallpapers', label: 'Wallpapers', icon: Image },
-    { id: 'layout', label: 'Layout', icon: Grid },
-    { id: 'search', label: 'Search & Time', icon: Search },
-    { id: 'hidden', label: 'Hidden Elements', icon: EyeOff },
-    { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: Keyboard },
-    { id: 'data', label: 'Your Data', icon: HardDrive },
-    { id: 'workspaces', label: 'Workspaces', icon: LayoutDashboard },
-  ];
+  const {
+    workspaces, activeWorkspaceId,
+    createWorkspace, updateWorkspace, deleteWorkspace,
+    duplicateWorkspace, setActiveWorkspace, setDefaultWorkspace,
+    exportWorkspace, importWorkspace,
+  } = useWorkspaceStore();
+
+  const { hiddenWidgets, hideWidget, showWidget } = useDashboardStore();
+  const activeWorkspaceWidgets =
+    workspaces.find((ws) => ws.id === activeWorkspaceId)?.widgets ?? [];
+
+  /* Escape to close */
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
       <motion.div
+        key="settings-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-end"
+        transition={{ duration: 0.15 }}
+        className="fixed inset-0 z-[150]"
+        style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}
         onClick={onClose}
       >
         <motion.div
           initial={{ x: '100%' }}
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
-          className="w-full max-w-4xl h-full bg-surface-elevated border-l border-border shadow-2xl flex flex-col"
+          transition={{ duration: 0.22, ease: [0, 0, 0.2, 1] }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: '100%',
+            maxWidth: '840px',
+            backgroundColor: 'var(--color-surface-elevated)',
+            borderLeft: '1px solid var(--color-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: 'var(--shadow-2xl)',
+          }}
           onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
         >
-          <div className="flex items-center justify-between p-6 border-b border-border">
-            <h2 className="text-heading-lg font-bold text-text">Settings</h2>
-            <button onClick={onClose} className="btn-icon p-2 text-text-muted hover:text-text">
-              <X className="w-5 h-5" />
+          {/* Drawer header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 1.25rem',
+              height: '56px',
+              borderBottom: '1px solid var(--color-border)',
+              flexShrink: 0,
+            }}
+          >
+            <h2
+              style={{
+                fontSize: '0.9375rem',
+                fontWeight: 600,
+                color: 'var(--color-text)',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Settings
+            </h2>
+            <button onClick={onClose} className="btn-icon" aria-label="Close settings">
+              <X style={{ width: '16px', height: '16px' }} />
             </button>
           </div>
 
-          <div className="flex flex-1 overflow-hidden">
-            <nav className="w-56 border-r border-border p-4 overflow-y-auto flex-shrink-0">
-              <ul className="space-y-1">
-                {sections.map((section) => (
-                  <li key={section.id}>
+          {/* Two-column body */}
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            {/* Nav sidebar */}
+            <nav
+              style={{
+                width: '168px',
+                borderRight: '1px solid var(--color-border)',
+                padding: '0.75rem 0.5rem',
+                overflowY: 'auto',
+                flexShrink: 0,
+              }}
+              aria-label="Settings sections"
+            >
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                {NAV_SECTIONS.map(({ id, label, Icon }) => (
+                  <li key={id}>
                     <button
-                      onClick={() => setActiveSection(section.id)}
+                      onClick={() => setActiveSection(id)}
                       className={cn(
-                        'w-full px-3 py-2.5 rounded-lg text-left flex items-center gap-3 text-body-sm transition-all',
-                        activeSection === section.id
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-text-muted hover:bg-surface-hover hover:text-text'
+                        'settings-nav-item',
+                        activeSection === id && 'active'
                       )}
+                      aria-current={activeSection === id ? 'page' : undefined}
                     >
-                      <section.icon className="w-5 h-5" />
-                      {section.label}
+                      <Icon style={{ width: '14px', height: '14px', flexShrink: 0 }} aria-hidden />
+                      {label}
                     </button>
                   </li>
                 ))}
               </ul>
             </nav>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {activeSection === 'appearance' && <AppearanceSection settings={settings.appearance} onUpdate={updateAppearance} />}
-              {activeSection === 'themes' && <ThemesSection settings={settings.themes} onUpdate={updateThemes} applyTheme={applyTheme} addCustomTheme={addCustomTheme} removeCustomTheme={removeCustomTheme} />}
-              {activeSection === 'wallpapers' && <WallpapersSection settings={settings.wallpapers} onUpdate={updateWallpapers} activeWorkspaceId={activeWorkspaceId} />}
-              {activeSection === 'layout' && <LayoutSection settings={settings.layout} onUpdate={updateLayout} />}
-              {activeSection === 'search' && <SearchSection settings={settings.search} onUpdate={updateSearch} />}
-              {activeSection === 'hidden' && <HiddenSection settings={settings.hidden} onUpdate={updateHidden} hiddenWidgets={hiddenWidgets} widgets={activeWorkspaceWidgets} onHideInstance={hideWidget} onShowInstance={showWidget} />}
-              {activeSection === 'shortcuts' && <ShortcutsSection settings={settings.shortcuts} onUpdate={updateShortcuts} />}
-              {activeSection === 'data' && <DataSection settings={settings.data} onUpdate={updateData} exportSettings={exportSettings} importSettings={importSettings} resetSettings={resetSettings} />}
-              {activeSection === 'workspaces' && <WorkspacesSection workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} onCreate={createWorkspace} onUpdate={updateWorkspace} onDelete={deleteWorkspace} onDuplicate={duplicateWorkspace} onSelect={setActiveWorkspace} onSetDefault={setDefaultWorkspace} onExport={exportWorkspace} onImport={importWorkspace} />}
+            {/* Content area */}
+            <div
+              className="scrollbar-thin"
+              style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}
+            >
+              {activeSection === 'appearance' && (
+                <AppearanceSection settings={settings.appearance} onUpdate={updateAppearance} />
+              )}
+              {activeSection === 'themes' && (
+                <ThemesSection
+                  settings={settings.themes}
+                  onUpdate={updateThemes}
+                  applyTheme={applyTheme}
+                  addCustomTheme={addCustomTheme}
+                  removeCustomTheme={removeCustomTheme}
+                />
+              )}
+              {activeSection === 'wallpapers' && (
+                <WallpapersSection
+                  settings={settings.wallpapers}
+                  onUpdate={updateWallpapers}
+                  activeWorkspaceId={activeWorkspaceId}
+                />
+              )}
+              {activeSection === 'layout' && (
+                <LayoutSection settings={settings.layout} onUpdate={updateLayout} />
+              )}
+              {activeSection === 'search' && (
+                <SearchSection settings={settings.search} onUpdate={updateSearch} />
+              )}
+              {activeSection === 'hidden' && (
+                <HiddenSection
+                  settings={settings.hidden}
+                  onUpdate={updateHidden}
+                  hiddenWidgets={hiddenWidgets}
+                  widgets={activeWorkspaceWidgets}
+                  onHideInstance={hideWidget}
+                  onShowInstance={showWidget}
+                />
+              )}
+              {activeSection === 'shortcuts' && (
+                <ShortcutsSection settings={settings.shortcuts} onUpdate={updateShortcuts} />
+              )}
+              {activeSection === 'data' && (
+                <DataSection
+                  settings={settings.data}
+                  onUpdate={updateData}
+                  exportSettings={exportSettings}
+                  importSettings={importSettings}
+                  resetSettings={resetSettings}
+                />
+              )}
+              {activeSection === 'workspaces' && (
+                <WorkspacesSection
+                  workspaces={workspaces}
+                  activeWorkspaceId={activeWorkspaceId}
+                  onCreate={createWorkspace}
+                  onUpdate={updateWorkspace}
+                  onDelete={deleteWorkspace}
+                  onDuplicate={duplicateWorkspace}
+                  onSelect={setActiveWorkspace}
+                  onSetDefault={setDefaultWorkspace}
+                  onExport={exportWorkspace}
+                  onImport={importWorkspace}
+                />
+              )}
             </div>
           </div>
         </motion.div>
@@ -100,138 +235,274 @@ export function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
   );
 }
 
+/* ─── Shared settings layout helpers ─────────────────────── */
+
+function SettingsGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
+      {children}
+    </div>
+  );
+}
+
+function SettingsRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span
+          style={{
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            color: 'var(--color-text)',
+          }}
+        >
+          {label}
+        </span>
+        {hint && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{hint}</span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  labels,
+}: {
+  options: T[];
+  value: T;
+  onChange: (v: T) => void;
+  labels?: Record<T, string>;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: '0.25rem',
+        padding: '0.25rem',
+        backgroundColor: 'var(--color-surface-secondary)',
+        borderRadius: 'var(--radius-md)',
+      }}
+    >
+      {options.map((opt) => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          style={{
+            flex: 1,
+            height: '30px',
+            borderRadius: 'var(--radius-sm)',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.8125rem',
+            fontWeight: value === opt ? 500 : 400,
+            transition: 'all 150ms ease',
+            backgroundColor:
+              value === opt ? 'var(--color-surface-elevated)' : 'transparent',
+            color: value === opt ? 'var(--color-text)' : 'var(--color-text-secondary)',
+            boxShadow: value === opt ? 'var(--shadow-xs)' : 'none',
+          }}
+        >
+          {labels ? labels[opt] : opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Appearance ─────────────────────────── */
+
 function AppearanceSection({
   settings,
   onUpdate,
 }: {
   settings: import('../../types').AppearanceSettings;
-  onUpdate: (updates: Partial<import('../../types').AppearanceSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').AppearanceSettings>) => Promise<void>;
 }) {
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Color Scheme</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {['light', 'dark', 'amoled'].map((scheme) => (
-            <button
-              key={scheme}
-              onClick={() => onUpdate({ colorScheme: scheme as 'light' | 'dark' | 'amoled' })}
-              className={cn(
-                'p-4 rounded-xl border-2 transition-all',
-                settings.colorScheme === scheme
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-border-strong'
-              )}
-            >
-              <div className={cn(
-                'w-full h-12 rounded-lg mb-2',
-                scheme === 'light' ? 'bg-white border border-gray-200' : scheme === 'dark' ? 'bg-gray-900' : 'bg-black'
-              )} />
-              <span className="font-medium text-text capitalize">{scheme}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Appearance</h2>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Accent Color</h3>
-        <div className="flex items-center gap-4">
-          <input
-            type="color"
-            value={settings.accentColor}
-            onChange={(e) => onUpdate({ accentColor: e.target.value })}
-            className="w-12 h-12 rounded-lg border border-border cursor-pointer"
-          />
-          <input
-            type="text"
-            value={settings.accentColor}
-            onChange={(e) => onUpdate({ accentColor: e.target.value })}
-            className="flex-1 input font-mono"
-          />
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Card Style</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Transparency: {Math.round(settings.cardTransparency * 100)}%</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={settings.cardTransparency * 100}
-              onChange={(e) => onUpdate({ cardTransparency: Number(e.target.value) / 100 })}
-              className="w-full accent-primary"
-            />
+      <SettingsGroup>
+        {/* Color scheme */}
+        <SettingsRow label="Color scheme">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+            {(['light', 'dark', 'amoled'] as const).map((scheme) => {
+              const icons = { light: Sun, dark: Moon, amoled: Monitor };
+              const Icon = icons[scheme];
+              const isActive = settings.colorScheme === scheme;
+              return (
+                <button
+                  key={scheme}
+                  onClick={() => onUpdate({ colorScheme: scheme })}
+                  style={{
+                    padding: '0.75rem 0.5rem',
+                    borderRadius: 'var(--radius-lg)',
+                    border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    backgroundColor: isActive
+                      ? 'var(--color-primary-muted)'
+                      : 'var(--color-surface)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    transition: 'all 150ms ease',
+                  }}
+                >
+                  <Icon
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                    }}
+                    aria-hidden
+                  />
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: isActive ? 500 : 400,
+                      color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {scheme}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label className="label">Blur: {settings.cardBlur}px</label>
+        </SettingsRow>
+
+        {/* Accent color */}
+        <SettingsRow label="Accent color">
+          <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
             <input
-              type="range"
-              min="0"
-              max="40"
-              value={settings.cardBlur}
-              onChange={(e) => onUpdate({ cardBlur: Number(e.target.value) })}
-              className="w-full accent-primary"
+              type="color"
+              value={settings.accentColor}
+              onChange={(e) => onUpdate({ accentColor: e.target.value })}
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                cursor: 'pointer',
+                padding: '2px',
+                backgroundColor: 'transparent',
+              }}
+              aria-label="Accent color picker"
             />
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Corner Radius</h3>
-        <div className="flex gap-2">
-          {['none', 'sm', 'md', 'lg', 'xl', '2xl'].map((radius) => (
-            <button
-              key={radius}
-              onClick={() => onUpdate({ cornerRadius: radius as any })}
-              className={cn(
-                'flex-1 py-2 px-4 rounded-lg border transition-all',
-                settings.cornerRadius === radius
-                  ? 'bg-primary border-primary text-white'
-                  : 'bg-surface hover:bg-surface-hover border-border text-text'
-              )}
-            >
-              {radius.charAt(0).toUpperCase() + radius.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Typography</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Font Family</label>
-            <select
-              value={settings.fontFamily}
-              onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+            <input
+              type="text"
+              value={settings.accentColor}
+              onChange={(e) => onUpdate({ accentColor: e.target.value })}
               className="input"
-            >
-              <option value="system">System Default</option>
-              <option value="inter">Inter</option>
-              <option value="crimson">Crimson Pro</option>
-              <option value="space-grotesk">Space Grotesk</option>
-              <option value="jetbrains">JetBrains Mono</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Base Font Size: {settings.fontSize}px</label>
-            <input
-              type="range"
-              min="12"
-              max="24"
-              value={settings.fontSize}
-              onChange={(e) => onUpdate({ fontSize: Number(e.target.value) })}
-              className="w-full accent-primary"
+              style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', height: '36px' }}
+              aria-label="Accent color hex value"
             />
           </div>
-        </div>
-      </div>
+        </SettingsRow>
+
+        {/* Card transparency */}
+        <SettingsRow
+          label="Card transparency"
+          hint={`${Math.round(settings.cardTransparency * 100)}%`}
+        >
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={settings.cardTransparency * 100}
+            onChange={(e) => onUpdate({ cardTransparency: Number(e.target.value) / 100 })}
+          />
+        </SettingsRow>
+
+        {/* Card blur */}
+        <SettingsRow
+          label="Card blur"
+          hint={`${settings.cardBlur}px`}
+        >
+          <input
+            type="range"
+            min="0"
+            max="40"
+            value={settings.cardBlur}
+            onChange={(e) => onUpdate({ cardBlur: Number(e.target.value) })}
+          />
+        </SettingsRow>
+
+        {/* Corner radius */}
+        <SettingsRow label="Corner radius">
+          <div style={{ display: 'flex', gap: '0.375rem' }}>
+            {(['none', 'sm', 'md', 'lg', 'xl', '2xl'] as const).map((r) => {
+              const isActive = settings.cornerRadius === r;
+              return (
+                <button
+                  key={r}
+                  onClick={() => onUpdate({ cornerRadius: r })}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    borderRadius: r === 'none' ? '0' : r === 'sm' ? '4px' : r === 'md' ? '6px' : r === 'lg' ? '8px' : r === 'xl' ? '12px' : '16px',
+                    border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    backgroundColor: isActive ? 'var(--color-primary-muted)' : 'var(--color-surface)',
+                    cursor: 'pointer',
+                    fontSize: '0.6875rem',
+                    fontWeight: isActive ? 500 : 400,
+                    color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                    transition: 'all 150ms ease',
+                  }}
+                >
+                  {r}
+                </button>
+              );
+            })}
+          </div>
+        </SettingsRow>
+
+        {/* Font family */}
+        <SettingsRow label="Font family">
+          <select
+            value={settings.fontFamily}
+            onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+            className="input"
+            style={{ height: '36px' }}
+          >
+            <option value="system">System default</option>
+            <option value="inter">Inter</option>
+            <option value="space-grotesk">Space Grotesk</option>
+            <option value="jetbrains">JetBrains Mono</option>
+          </select>
+        </SettingsRow>
+
+        {/* Font size */}
+        <SettingsRow label="Base font size" hint={`${settings.fontSize}px`}>
+          <input
+            type="range"
+            min="12"
+            max="20"
+            value={settings.fontSize}
+            onChange={(e) => onUpdate({ fontSize: Number(e.target.value) })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
     </div>
   );
 }
+
+/* ─── Themes ─────────────────────────── */
 
 function ThemesSection({
   settings,
@@ -241,89 +512,165 @@ function ThemesSection({
   removeCustomTheme,
 }: {
   settings: import('../../types').ThemeSettings;
-  onUpdate: (updates: Partial<import('../../types').ThemeSettings>) => Promise<void>;
-  applyTheme: (themeId: string, variant?: string) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').ThemeSettings>) => Promise<void>;
+  applyTheme: (id: string, variant?: string) => Promise<void>;
   addCustomTheme: (theme: import('../../types').CustomTheme) => Promise<void>;
-  removeCustomTheme: (themeId: string) => Promise<void>;
+  removeCustomTheme: (id: string) => Promise<void>;
 }) {
-  const themes = [
-    { id: 'nebula', name: 'Nebula', description: 'Futuristic with cyan & violet accents', category: 'premium', variants: ['dark', 'light'] },
-    { id: 'paper', name: 'Paper', description: 'Editorial design with warm tones', category: 'minimal', variants: ['light'] },
-    { id: 'terminal', name: 'Terminal', description: 'Developer-inspired with green/amber', category: 'developer', variants: ['green', 'amber'] },
-    { id: 'glass', name: 'Glass', description: 'Premium glassmorphism', category: 'artistic', variants: ['dark', 'light'] },
-    { id: 'retro', name: 'Retro', description: 'Vintage computing aesthetic', category: 'artistic', variants: ['dark', 'light'] },
-    { id: 'brutalist', name: 'Brutalist', description: 'High contrast editorial style', category: 'minimal', variants: ['light', 'dark'] },
-  ];
+  const THEMES = [
+    { id: 'nebula',    name: 'Nebula',    desc: 'Cyan & violet on dark',   variants: ['dark', 'light'] },
+    { id: 'paper',     name: 'Paper',     desc: 'Editorial warm tones',    variants: ['light'] },
+    { id: 'terminal',  name: 'Terminal',  desc: 'Developer green/amber',   variants: ['green', 'amber'] },
+    { id: 'glass',     name: 'Glass',     desc: 'Frosted glassmorphism',   variants: ['dark', 'light'] },
+    { id: 'retro',     name: 'Retro',     desc: 'Vintage computing',       variants: ['dark', 'light'] },
+    { id: 'brutalist', name: 'Brutalist', desc: 'High-contrast editorial', variants: ['light', 'dark'] },
+  ] as const;
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Built-in Themes</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {themes.map((theme) => (
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Themes</h2>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: '0.5rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        {THEMES.map((theme) => {
+          const isActive = settings.currentTheme === theme.id;
+          return (
             <button
               key={theme.id}
               onClick={() => {
                 onUpdate({ currentTheme: theme.id, currentVariant: theme.variants[0] });
                 applyTheme(theme.id, theme.variants[0]);
               }}
-              className={cn(
-                'p-4 rounded-xl border-2 transition-all text-left',
-                settings.currentTheme === theme.id
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-border-strong'
-              )}
+              style={{
+                padding: '0.875rem',
+                borderRadius: 'var(--radius-lg)',
+                border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                backgroundColor: isActive ? 'var(--color-primary-muted)' : 'var(--color-surface)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 150ms ease',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
             >
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-text">{theme.name}</h4>
-                <span className="badge badge-primary text-xs">{theme.category}</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+                  }}
+                >
+                  {theme.name}
+                </span>
+                {isActive && (
+                  <Check
+                    style={{ width: '14px', height: '14px', color: 'var(--color-primary)' }}
+                    aria-hidden
+                  />
+                )}
               </div>
-              <p className="text-body-sm text-text-muted">{theme.description}</p>
-              <div className="flex gap-1 mt-2">
-                {theme.variants.map((variant) => (
-                  <span
-                    key={variant}
-                    className={cn(
-                      'px-2 py-0.5 text-xs rounded',
-                      settings.currentTheme === theme.id && settings.currentVariant === variant
-                        ? 'bg-primary text-white'
-                        : 'bg-surface text-text-muted'
-                    )}
-                  >
-                    {variant}
-                  </span>
-                ))}
-              </div>
+              <span
+                style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}
+              >
+                {theme.desc}
+              </span>
+
+              {/* Variant pills */}
+              {theme.variants.length > 1 && (
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                  {theme.variants.map((v) => {
+                    const vActive = isActive && settings.currentVariant === v;
+                    return (
+                      <button
+                        key={v}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdate({ currentTheme: theme.id, currentVariant: v });
+                          applyTheme(theme.id, v);
+                        }}
+                        style={{
+                          height: '20px',
+                          padding: '0 0.5rem',
+                          borderRadius: 'var(--radius-full)',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '0.6875rem',
+                          fontWeight: vActive ? 500 : 400,
+                          backgroundColor: vActive
+                            ? 'var(--color-primary)'
+                            : 'var(--color-surface-secondary)',
+                          color: vActive ? '#ffffff' : 'var(--color-text-muted)',
+                          transition: 'all 150ms ease',
+                        }}
+                      >
+                        {v}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
+      {/* Custom themes */}
       {settings.customThemes.length > 0 && (
-        <div>
-          <h3 className="text-heading-md font-semibold text-text mb-4">Custom Themes</h3>
-          <div className="space-y-3">
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h3 className="settings-heading">Custom themes</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
             {settings.customThemes.map((theme) => (
-              <div key={theme.id} className="flex items-center justify-between p-4 bg-surface border border-border rounded-xl">
+              <div
+                key={theme.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.625rem 0.75rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--color-surface)',
+                }}
+              >
                 <div>
-                  <h4 className="font-medium text-text">{theme.name}</h4>
-                  <p className="text-body-sm text-text-muted">Based on {theme.baseTheme}</p>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text)' }}>
+                    {theme.name}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    Based on {theme.baseTheme}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div style={{ display: 'flex', gap: '0.25rem' }}>
                   <button
                     onClick={() => {
                       onUpdate({ currentTheme: 'custom', currentVariant: theme.id });
                       applyTheme('custom', theme.id);
                     }}
-                    className="btn-secondary text-body-sm"
+                    className="btn btn-secondary btn-sm"
                   >
                     Apply
                   </button>
                   <button
                     onClick={() => removeCustomTheme(theme.id)}
-                    className="btn-icon p-1.5 text-error"
+                    className="btn-icon"
+                    aria-label={`Delete ${theme.name}`}
+                    style={{ color: 'var(--color-error)' }}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 style={{ width: '14px', height: '14px' }} />
                   </button>
                 </div>
               </div>
@@ -332,10 +679,15 @@ function ThemesSection({
         </div>
       )}
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Create Custom Theme</h3>
-        <CreateCustomThemeForm baseThemes={themes} addCustomTheme={addCustomTheme} />
-      </div>
+      {/* Create custom theme */}
+      <CreateCustomThemeForm
+        baseThemes={[
+          { id: 'nebula', name: 'Nebula' },
+          { id: 'paper', name: 'Paper' },
+          { id: 'glass', name: 'Glass' },
+        ]}
+        addCustomTheme={addCustomTheme}
+      />
     </div>
   );
 }
@@ -344,78 +696,78 @@ function CreateCustomThemeForm({
   baseThemes,
   addCustomTheme,
 }: {
-  baseThemes: Array<{ id: string; name: string }>;
+  baseThemes: { id: string; name: string }[];
   addCustomTheme: (theme: import('../../types').CustomTheme) => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
-  const [baseTheme, setBaseTheme] = useState(baseThemes[0]?.id || 'nebula');
-  const [accentColor, setAccentColor] = useState('#06b6d4');
-
-  const create = async () => {
-    if (!name.trim()) return;
-    await addCustomTheme({
-      id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      name: name.trim(),
-      baseTheme,
-      tokens: { colors: { primary: accentColor, accent: accentColor } },
-      createdAt: Date.now(),
-    });
-    setName('');
-    setAccentColor('#06b6d4');
-    setCreating(false);
-  };
+  const [base, setBase] = useState(baseThemes[0]?.id || 'nebula');
+  const [accent, setAccent] = useState('#06b6d4');
 
   if (!creating) {
     return (
-      <button onClick={() => setCreating(true)} className="btn-secondary w-full">
-        <Plus className="w-4 h-4 mr-2" /> Create New Theme
+      <button onClick={() => setCreating(true)} className="btn btn-secondary" style={{ width: '100%' }}>
+        <Plus style={{ width: '14px', height: '14px' }} />
+        Create custom theme
       </button>
     );
   }
 
   return (
-    <div className="p-4 bg-surface border border-border rounded-xl space-y-4">
-      <div>
-        <label className="label">Theme Name</label>
+    <div
+      style={{
+        padding: '0.875rem',
+        borderRadius: 'var(--radius-lg)',
+        border: '1px solid var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.75rem',
+      }}
+    >
+      <SettingsRow label="Theme name">
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., My Cyberpunk Theme"
+          placeholder="My custom theme"
           className="input"
+          style={{ height: '36px' }}
           autoFocus
         />
-      </div>
-      <div>
-        <label className="label">Base Theme</label>
-        <select value={baseTheme} onChange={(e) => setBaseTheme(e.target.value)} className="input">
-          {baseThemes.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
+      </SettingsRow>
+      <SettingsRow label="Base theme">
+        <select value={base} onChange={(e) => setBase(e.target.value)} className="input" style={{ height: '36px' }}>
+          {baseThemes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
-      </div>
-      <div>
-        <label className="label">Accent Color</label>
-        <div className="flex items-center gap-3">
-          <input
-            type="color"
-            value={accentColor}
-            onChange={(e) => setAccentColor(e.target.value)}
-            className="w-12 h-10 rounded-lg cursor-pointer bg-transparent border border-border"
-          />
-          <span className="font-mono text-body-sm text-text">{accentColor}</span>
+      </SettingsRow>
+      <SettingsRow label="Accent color">
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)}
+            style={{ width: '36px', height: '36px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', backgroundColor: 'transparent' }} />
+          <span style={{ fontSize: '0.8125rem', fontFamily: 'var(--font-mono)', color: 'var(--color-text)' }}>{accent}</span>
         </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button onClick={() => setCreating(false)} className="btn-secondary">Cancel</button>
-        <button onClick={create} className="btn-primary" disabled={!name.trim()}>
-          <Plus className="w-4 h-4 mr-1" /> Create
+      </SettingsRow>
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+        <button onClick={() => setCreating(false)} className="btn btn-secondary btn-sm">Cancel</button>
+        <button
+          onClick={async () => {
+            if (!name.trim()) return;
+            await addCustomTheme({ id: `custom-${Date.now()}`, name: name.trim(), baseTheme: base, tokens: { colors: { primary: accent, accent } }, createdAt: Date.now() });
+            setName(''); setAccent('#06b6d4'); setCreating(false);
+          }}
+          className="btn btn-primary btn-sm"
+          disabled={!name.trim()}
+        >
+          <Plus style={{ width: '13px', height: '13px' }} />
+          Create
         </button>
       </div>
     </div>
   );
 }
+
+/* ─── Wallpapers ─────────────────────────── */
 
 function WallpapersSection({
   settings,
@@ -423,571 +775,354 @@ function WallpapersSection({
   activeWorkspaceId,
 }: {
   settings: import('../../types').WallpaperSettings;
-  onUpdate: (updates: Partial<import('../../types').WallpaperSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').WallpaperSettings>) => Promise<void>;
   activeWorkspaceId: string | null;
 }) {
-  const [uploadFiles, setUploadFiles] = useState<FileList | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadUrls, setUploadUrls] = useState<Record<string, string>>({});
 
-  const builtInWallpapers = [
-    { id: 'nebula-gradient', name: 'Nebula Gradient', preview: 'linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 50%, #16213e 100%)', category: 'gradients' },
-    { id: 'sunset-gradient', name: 'Sunset', preview: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)', category: 'gradients' },
-    { id: 'ocean-gradient', name: 'Ocean', preview: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', category: 'gradients' },
-    { id: 'forest-gradient', name: 'Forest', preview: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)', category: 'gradients' },
-    { id: 'fire-gradient', name: 'Fire', preview: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)', category: 'gradients' },
-    { id: 'violet-gradient', name: 'Violet Dream', preview: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', category: 'gradients' },
-    { id: 'midnight-gradient', name: 'Midnight', preview: 'linear-gradient(135deg, #141e30 0%, #243b55 100%)', category: 'gradients' },
-    { id: 'aurora-gradient', name: 'Aurora', preview: 'linear-gradient(135deg, #00c9ff 0%, #92fe9d 100%)', category: 'gradients' },
-    { id: 'rose-gradient', name: 'Rose Gold', preview: 'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)', category: 'gradients' },
-    { id: 'cyber-gradient', name: 'Cyberpunk', preview: 'linear-gradient(135deg, #ff00cc 0%, #333399 100%)', category: 'gradients' },
-    { id: 'warm-gradient', name: 'Warm Embrace', preview: 'linear-gradient(135deg, #fad0c4 0%, #ffd1ff 100%)', category: 'gradients' },
-    { id: 'cool-gradient', name: 'Cool Breeze', preview: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)', category: 'gradients' },
+  useEffect(() => {
+    let cancelled = false;
+    settings.galleryImages
+      .filter((w) => w.category === 'uploads')
+      .forEach((wp) => {
+        storageService.getWallpaperUrl(wp.id).then((url) => {
+          if (!cancelled && url)
+            setUploadUrls((prev) => (prev[wp.id] === url ? prev : { ...prev, [wp.id]: url }));
+        });
+      });
+    return () => { cancelled = true; };
+  }, [settings.galleryImages]);
+
+  const GRADIENTS = [
+    { id: 'nebula-gradient',  name: 'Nebula',   preview: 'linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 50%, #16213e 100%)' },
+    { id: 'sunset-gradient',  name: 'Sunset',   preview: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)' },
+    { id: 'ocean-gradient',   name: 'Ocean',    preview: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+    { id: 'forest-gradient',  name: 'Forest',   preview: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)' },
+    { id: 'fire-gradient',    name: 'Fire',     preview: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)' },
+    { id: 'midnight-gradient',name: 'Midnight', preview: 'linear-gradient(135deg, #141e30 0%, #243b55 100%)' },
+    { id: 'aurora-gradient',  name: 'Aurora',   preview: 'linear-gradient(135deg, #00c9ff 0%, #92fe9d 100%)' },
+    { id: 'rose-gradient',    name: 'Rose',     preview: 'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)' },
+    { id: 'cyber-gradient',   name: 'Cyberpunk',preview: 'linear-gradient(135deg, #ff00cc 0%, #333399 100%)' },
   ];
-
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setUploadFiles(e.dataTransfer.files);
-      handleFileUpload(e.dataTransfer.files);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setUploadFiles(e.target.files);
-      handleFileUpload(e.target.files);
-    }
+    if (e.dataTransfer.files?.length) handleFileUpload(e.dataTransfer.files);
   };
 
   const handleFileUpload = async (files: FileList) => {
     for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
-      
       try {
-        const id = await storageService.saveWallpaper(`upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, file);
+        const id = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await storageService.saveWallpaper(id, file);
         const url = await storageService.getWallpaperUrl(id);
         if (url) {
-          const newWallpaper = {
-            id,
-            name: file.name,
-            preview: url,
-            thumbnail: url,
-            category: 'uploads',
-            type: file.type.startsWith('video/') ? 'video' as const : 'image' as const,
-          };
-          onUpdate({ galleryImages: [...settings.galleryImages, newWallpaper] });
+          onUpdate({
+            galleryImages: [
+              ...settings.galleryImages,
+              { id, name: file.name, preview: url, thumbnail: url, category: 'uploads', type: file.type.startsWith('video/') ? 'video' : 'image' },
+            ],
+          });
         }
-      } catch (error) {
-        console.error('Failed to upload wallpaper:', error);
+      } catch (err) {
+        console.error('Failed to upload wallpaper:', err);
       }
     }
-    setUploadFiles(null);
   };
 
-  const handleWallpaperSelect = async (wallpaper: { id: string; preview: string; name: string; type?: 'image' | 'video' }) => {
-    const workspaceStore = useWorkspaceStore.getState();
-    const activeWorkspaceId = workspaceStore.activeWorkspaceId;
-    if (activeWorkspaceId) {
-      const wallpaperConfig: import('../../types').WallpaperConfig = {
-        // Built-in gradient previews store a CSS gradient string, which must be
-        // rendered as a background, not an <img> src
-        type: wallpaper.type || (wallpaper.id.endsWith('-gradient') ? 'gradient' as const : 'image' as const),
-        source: wallpaper.id.startsWith('upload-') ? 'upload' as const : 'gallery' as const,
-        value: wallpaper.preview,
-        brightness: settings.defaultBrightness,
-        blur: settings.defaultBlur,
-        overlay: settings.defaultOverlay,
-        position: settings.defaultPosition,
-        autoRotate: false,
-        rotationInterval: settings.rotationInterval,
-      };
-      await workspaceStore.updateWorkspace(activeWorkspaceId, { wallpaper: wallpaperConfig });
-      useSettingsStore.getState().applyTheme(
-        useSettingsStore.getState().settings.themes.currentTheme,
-        useSettingsStore.getState().settings.themes.currentVariant
-      );
+  const selectWallpaper = async (wp: { id: string; preview: string; name: string; type?: 'image' | 'video' }) => {
+    const store = useWorkspaceStore.getState();
+    const wsId = store.activeWorkspaceId;
+    if (!wsId) {
+      console.error('No active workspace ID');
+      return;
     }
-  };
-
-  const handleDeleteWallpaper = async (wallpaperId: string) => {
-    if (!wallpaperId.startsWith('upload-')) return;
     
-    await storageService.deleteWallpaper(wallpaperId);
-    onUpdate({ galleryImages: settings.galleryImages.filter((w) => w.id !== wallpaperId) });
+    const config: WallpaperConfig = {
+      type: wp.type || (wp.id.endsWith('-gradient') ? 'gradient' : 'image'),
+      source: wp.id.startsWith('upload-') ? 'upload' : 'gallery',
+      value: wp.preview,
+      ...(wp.id.startsWith('upload-') ? { id: wp.id } : {}),
+      brightness: settings.defaultBrightness ?? 1,
+      blur: settings.defaultBlur ?? 0,
+      overlay: settings.defaultOverlay ?? 0.5,
+      position: (settings.defaultPosition || 'center') as 'center' | 'cover' | 'contain' | 'top' | 'bottom' | 'left' | 'right',
+      autoRotate: false,
+      rotationInterval: settings.rotationInterval,
+    };
+    
+    console.log('Setting wallpaper:', { wsId, config });
+    
+    try {
+      await store.updateWorkspace(wsId, { wallpaper: config });
+      console.log('Wallpaper updated successfully');
+      
+      // Force a re-read of the workspace to verify it was saved
+      const updated = store.workspaces.find(ws => ws.id === wsId);
+      console.log('Workspace after update:', updated?.wallpaper);
+    } catch (err) {
+      console.error('Failed to update wallpaper:', err);
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Gallery</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {builtInWallpapers.map((wp) => (
-            <button
-              key={wp.id}
-              onClick={() => handleWallpaperSelect({ id: wp.id, preview: wp.preview, name: wp.name })}
-              className="relative aspect-video rounded-xl overflow-hidden border-2 border-border hover:border-primary/50 transition-all group"
-            >
-              <div className="absolute inset-0" style={{ background: wp.preview }} />
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Check className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute bottom-2 left-2 right-2 text-white text-body-xs truncate bg-black/50 px-2 py-1 rounded">
-                {wp.name}
-              </div>
-            </button>
-          ))}
-          {settings.galleryImages.filter((w) => w.category === 'uploads').map((wp) => (
-            <div key={wp.id} className="relative aspect-video rounded-xl overflow-hidden border-2 border-border group">
-              {wp.type === 'video' ? (
-                <video className="absolute inset-0 w-full h-full object-cover" src={wp.preview} muted loop playsInline />
-              ) : (
-                <img className="absolute inset-0 w-full h-full object-cover" src={wp.preview} alt={wp.name} />
-              )}
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <button onClick={(e) => { e.stopPropagation(); handleWallpaperSelect(wp); }} className="p-2 bg-white/20 backdrop-blur rounded-full text-white hover:bg-white/30">
-                  <Check className="w-5 h-5" />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); handleDeleteWallpaper(wp.id); }} className="p-2 bg-red-500/20 backdrop-blur rounded-full text-red-300 hover:bg-red-500/30">
-                  <Trash2Icon className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="absolute bottom-2 left-2 right-2 text-white text-body-xs truncate bg-black/50 px-2 py-1 rounded">
-                {wp.name}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Wallpapers</h2>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Upload</h3>
-        <div
-          className={cn(
-            'border-2 border-dashed rounded-xl p-8 text-center transition-colors',
-            dragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-          )}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          <Image className="w-12 h-12 mx-auto mb-4 text-text-muted" />
-          <p className="text-text-muted mb-4">Drag & drop or click to upload images/videos</p>
-          <button onClick={() => fileInputRef.current?.click()} className="btn-primary">
-            <Upload className="w-4 h-4 mr-2" /> Choose Files
+      {/* Gradient gallery */}
+      <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.625rem' }}>Gradients</h3>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+          gap: '0.375rem',
+          marginBottom: '1.25rem',
+        }}
+      >
+        {GRADIENTS.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => selectWallpaper({ id: g.id, preview: g.preview, name: g.name })}
+            style={{
+              aspectRatio: '16/9',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--color-border)',
+              overflow: 'hidden',
+              cursor: 'pointer',
+              position: 'relative',
+              background: g.preview,
+              transition: 'border-color 150ms ease',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border)'; }}
+            aria-label={`Select ${g.name} wallpaper`}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                padding: '0.25rem 0.375rem',
+                fontSize: '0.625rem',
+                color: '#fff',
+                background: 'rgba(0,0,0,0.5)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {g.name}
+            </span>
           </button>
-        </div>
+        ))}
       </div>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Current Wallpaper</h3>
-        {activeWorkspaceId ? (() => {
-          const workspaceStore = useWorkspaceStore.getState();
-          const workspace = workspaceStore.getWorkspace(activeWorkspaceId!);
-          const wallpaper = workspace?.wallpaper;
-          
-          if (!wallpaper || wallpaper.type === 'none') {
-            return <p className="text-text-muted text-body-sm">No wallpaper set for this workspace</p>;
-          }
-          
-          const handleWallpaperSettingChange = (updates: Partial<WallpaperConfig>) => {
-            workspaceStore.updateWorkspace(activeWorkspaceId!, { wallpaper: { ...wallpaper, ...updates } });
-          };
-          
-          return (
-            <div className="space-y-4">
-              <div>
-                <label className="label">Brightness: {Math.round(wallpaper.brightness * 100)}%</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={wallpaper.brightness * 100}
-                  onChange={(e) => handleWallpaperSettingChange({ brightness: Number(e.target.value) / 100 })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <div>
-                <label className="label">Blur: {wallpaper.blur}px</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="40"
-                  value={wallpaper.blur}
-                  onChange={(e) => handleWallpaperSettingChange({ blur: Number(e.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <div>
-                <label className="label">Overlay: {Math.round(wallpaper.overlay * 100)}%</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={wallpaper.overlay * 100}
-                  onChange={(e) => handleWallpaperSettingChange({ overlay: Number(e.target.value) / 100 })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <div>
-                <label className="label">Position</label>
-                <select
-                  value={wallpaper.position}
-                  onChange={(e) => handleWallpaperSettingChange({ position: e.target.value as WallpaperConfig['position'] })}
-                  className="input"
-                >
-                  <option value="center">Center</option>
-                  <option value="cover">Cover</option>
-                  <option value="contain">Contain</option>
-                  <option value="top">Top</option>
-                  <option value="bottom">Bottom</option>
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                </select>
-              </div>
-            </div>
-          );
-        })() : (
-          <p className="text-text-muted text-body-sm">No active workspace</p>
-        )}
+      {/* Uploads */}
+      {settings.galleryImages.filter((w) => w.category === 'uploads').length > 0 && (
+        <>
+          <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.625rem' }}>Uploads</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '0.375rem', marginBottom: '1.25rem' }}>
+            {settings.galleryImages.filter((w) => w.category === 'uploads').map((wp) => {
+              const url = uploadUrls[wp.id] || wp.preview;
+              return (
+                <div key={wp.id} style={{ aspectRatio: '16/9', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}>
+                  {wp.type === 'video'
+                    ? <video src={url} muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <img src={url} alt={wp.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', opacity: 0, display: 'flex', gap: '0.25rem', alignItems: 'center', justifyContent: 'center' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = '0'; }}>
+                    <button onClick={() => selectWallpaper(wp)} style={{ padding: '0.25rem', background: 'rgba(255,255,255,0.2)', borderRadius: '50%', border: 'none', cursor: 'pointer', color: '#fff' }} aria-label="Select">
+                      <Check style={{ width: '14px', height: '14px' }} />
+                    </button>
+                    <button onClick={() => { storageService.deleteWallpaper(wp.id); onUpdate({ galleryImages: settings.galleryImages.filter((w) => w.id !== wp.id) }); }}
+                      style={{ padding: '0.25rem', background: 'rgba(239,68,68,0.3)', borderRadius: '50%', border: 'none', cursor: 'pointer', color: '#fff' }} aria-label="Delete">
+                      <Trash2 style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Upload dropzone */}
+      <div
+        onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        style={{
+          border: `1.5px dashed ${dragActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
+          borderRadius: 'var(--radius-lg)',
+          padding: '1.25rem',
+          textAlign: 'center',
+          backgroundColor: dragActive ? 'var(--color-primary-muted)' : 'transparent',
+          transition: 'all 150ms ease',
+          marginBottom: '1.25rem',
+        }}
+      >
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && handleFileUpload(e.target.files)} />
+        <Image style={{ width: '24px', height: '24px', color: 'var(--color-text-muted)', margin: '0 auto 0.5rem' }} />
+        <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+          Drag & drop images or videos
+        </p>
+        <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary btn-sm">
+          <Upload style={{ width: '13px', height: '13px' }} />
+          Browse files
+        </button>
       </div>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Settings</h3>
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="autoRotate"
-              checked={settings.autoRotate}
-              onChange={(e) => onUpdate({ autoRotate: e.target.checked })}
-              className="w-4 h-4 accent-primary"
-            />
-            <label htmlFor="autoRotate" className="text-body-md text-text">Auto-rotate wallpaper</label>
+      {/* Current wallpaper controls */}
+      {activeWorkspaceId && (() => {
+        const ws = useWorkspaceStore.getState().getWorkspace(activeWorkspaceId!);
+        const wallpaper = ws?.wallpaper;
+        if (!wallpaper || wallpaper.type === 'none') return null;
+        const update = (u: Partial<WallpaperConfig>) =>
+          useWorkspaceStore.getState().updateWorkspace(activeWorkspaceId!, { wallpaper: { ...wallpaper, ...u } });
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <h3 className="settings-heading" style={{ fontSize: '0.8125rem' }}>Current wallpaper</h3>
+            <SettingsRow label="Brightness" hint={`${Math.round(wallpaper.brightness * 100)}%`}>
+              <input type="range" min="0" max="100" value={wallpaper.brightness * 100} onChange={(e) => update({ brightness: Number(e.target.value) / 100 })} />
+            </SettingsRow>
+            <SettingsRow label="Blur" hint={`${wallpaper.blur}px`}>
+              <input type="range" min="0" max="40" value={wallpaper.blur} onChange={(e) => update({ blur: Number(e.target.value) })} />
+            </SettingsRow>
+            <SettingsRow label="Overlay" hint={`${Math.round(wallpaper.overlay * 100)}%`}>
+              <input type="range" min="0" max="100" value={wallpaper.overlay * 100} onChange={(e) => update({ overlay: Number(e.target.value) / 100 })} />
+            </SettingsRow>
+            <SettingsRow label="Position">
+              <select value={wallpaper.position} onChange={(e) => update({ position: e.target.value as WallpaperConfig['position'] })} className="input" style={{ height: '36px' }}>
+                {['center', 'cover', 'contain', 'top', 'bottom', 'left', 'right'].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </SettingsRow>
+            <button onClick={() => useWorkspaceStore.getState().updateWorkspace(activeWorkspaceId!, { wallpaper: { ...wallpaper, type: 'none' as const } })}
+              className="btn btn-secondary btn-sm" style={{ alignSelf: 'flex-start', color: 'var(--color-error)' }}>
+              <Trash2 style={{ width: '13px', height: '13px' }} />
+              Remove wallpaper
+            </button>
           </div>
-          {settings.autoRotate && (
-            <div>
-              <label className="label">Rotation Interval: {settings.rotationInterval / 60000} min</label>
-              <input
-                type="range"
-                min="1"
-                max="60"
-                value={settings.rotationInterval / 60000}
-                onChange={(e) => onUpdate({ rotationInterval: Number(e.target.value) * 60000 })}
-                className="w-full accent-primary"
-              />
-            </div>
-          )}
-          <div>
-            <label className="label">Default Brightness: {Math.round(settings.defaultBrightness * 100)}%</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={settings.defaultBrightness * 100}
-              onChange={(e) => onUpdate({ defaultBrightness: Number(e.target.value) / 100 })}
-              className="w-full accent-primary"
-            />
-          </div>
-          <div>
-            <label className="label">Default Blur: {settings.defaultBlur}px</label>
-            <input
-              type="range"
-              min="0"
-              max="40"
-              value={settings.defaultBlur}
-              onChange={(e) => onUpdate({ defaultBlur: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-          </div>
-          <div>
-            <label className="label">Default Overlay: {Math.round(settings.defaultOverlay * 100)}%</label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={settings.defaultOverlay * 100}
-              onChange={(e) => onUpdate({ defaultOverlay: Number(e.target.value) / 100 })}
-              className="w-full accent-primary"
-            />
-          </div>
-          <div>
-            <label className="label">Default Position</label>
-            <select
-              value={settings.defaultPosition}
-              onChange={(e) => onUpdate({ defaultPosition: e.target.value as import('../../types').WallpaperConfig['position'] })}
-              className="input"
-            >
-              <option value="center">Center</option>
-              <option value="cover">Cover</option>
-              <option value="contain">Contain</option>
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-            </select>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }
+
+/* ─── Layout ─────────────────────────── */
 
 function LayoutSection({
   settings,
   onUpdate,
 }: {
   settings: import('../../types').LayoutSettings;
-  onUpdate: (updates: Partial<import('../../types').LayoutSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').LayoutSettings>) => Promise<void>;
 }) {
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Grid Settings</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Widget Spacing: {settings.widgetSpacing}px</label>
-            <input
-              type="range"
-              min="0"
-              max="32"
-              value={settings.widgetSpacing}
-              onChange={(e) => onUpdate({ widgetSpacing: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-          </div>
-          <div>
-            <label className="label">Grid Columns: {settings.gridColumns}</label>
-            <input
-              type="range"
-              min="4"
-              max="24"
-              value={settings.gridColumns}
-              onChange={(e) => onUpdate({ gridColumns: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-          </div>
-          <div>
-            <label className="label">Row Height: {settings.gridRowHeight}px</label>
-            <input
-              type="range"
-              min="40"
-              max="120"
-              value={settings.gridRowHeight}
-              onChange={(e) => onUpdate({ gridRowHeight: Number(e.target.value) })}
-              className="w-full accent-primary"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Dashboard Alignment</h3>
-        <div className="flex gap-2">
-          {['left', 'center', 'stretch'].map((align) => (
-            <button
-              key={align}
-              onClick={() => onUpdate({ dashboardAlignment: align as any })}
-              className={cn(
-                'flex-1 py-2 px-4 rounded-lg border transition-all',
-                settings.dashboardAlignment === align
-                  ? 'bg-primary border-primary text-white'
-                  : 'bg-surface hover:bg-surface-hover border-border text-text'
-              )}
-            >
-              {align.charAt(0).toUpperCase() + align.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Layout</h2>
+      <SettingsGroup>
+        <SettingsRow label="Widget spacing" hint={`${settings.widgetSpacing}px`}>
+          <input type="range" min="0" max="32" value={settings.widgetSpacing} onChange={(e) => onUpdate({ widgetSpacing: Number(e.target.value) })} />
+        </SettingsRow>
+        <SettingsRow label="Grid columns" hint={`${settings.gridColumns}`}>
+          <input type="range" min="4" max="24" value={settings.gridColumns} onChange={(e) => onUpdate({ gridColumns: Number(e.target.value) })} />
+        </SettingsRow>
+        <SettingsRow label="Row height" hint={`${settings.gridRowHeight}px`}>
+          <input type="range" min="40" max="120" value={settings.gridRowHeight} onChange={(e) => onUpdate({ gridRowHeight: Number(e.target.value) })} />
+        </SettingsRow>
+        <SettingsRow label="Dashboard alignment">
+          <SegmentedControl
+            options={['left', 'center', 'stretch'] as const}
+            value={(settings.dashboardAlignment ?? 'center') as 'left' | 'center' | 'stretch'}
+            onChange={(v) => onUpdate({ dashboardAlignment: v })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
     </div>
   );
 }
+
+/* ─── Search ─────────────────────────── */
 
 function SearchSection({
   settings,
   onUpdate,
 }: {
   settings: import('../../types').SearchSettings;
-  onUpdate: (updates: Partial<import('../../types').SearchSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').SearchSettings>) => Promise<void>;
 }) {
-  const engines = [
-    { id: 'google', name: 'Google', icon: '🔍' },
-    { id: 'bing', name: 'Bing', icon: '🔍' },
-    { id: 'duckduckgo', name: 'DuckDuckGo', icon: '🦆' },
-    { id: 'brave', name: 'Brave Search', icon: '🦁' },
+  const ENGINES = [
+    { id: 'google',    name: 'Google',     emoji: 'G' },
+    { id: 'bing',      name: 'Bing',       emoji: 'B' },
+    { id: 'duckduckgo',name: 'DuckDuckGo', emoji: 'D' },
+    { id: 'brave',     name: 'Brave',      emoji: 'Br' },
   ];
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Default Search Engine</h3>
-        <div className="space-y-2">
-          {engines.map((engine) => (
-            <button
-              key={engine.id}
-              onClick={() => onUpdate({ defaultEngine: engine.id })}
-              className={cn(
-                'w-full px-4 py-3 flex items-center gap-3 text-left rounded-lg border transition-all',
-                settings.defaultEngine === engine.id
-                  ? 'bg-primary/20 border-primary text-primary'
-                  : 'bg-surface hover:bg-surface-hover border-border text-text'
-              )}
-            >
-              <span className="text-2xl">{engine.icon}</span>
-              <span className="font-medium">{engine.name}</span>
-              {settings.defaultEngine === engine.id && <span className="ml-auto text-primary">✓</span>}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Search</h2>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Clock Settings</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Style</label>
-            <div className="flex gap-2">
-              {['digital', 'analog'].map((style) => (
+      <SettingsGroup>
+        <SettingsRow label="Default search engine">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {ENGINES.map((eng) => {
+              const isActive = settings.defaultEngine === eng.id;
+              return (
                 <button
-                  key={style}
-                  onClick={() => onUpdate({ clockStyle: style as 'digital' | 'analog' })}
-                  className={cn(
-                    'flex-1 py-2 px-4 rounded-lg border transition-all',
-                    settings.clockStyle === style
-                      ? 'bg-primary border-primary text-white'
-                      : 'bg-surface hover:bg-surface-hover border-border text-text'
-                  )}
+                  key={eng.id}
+                  onClick={() => onUpdate({ defaultEngine: eng.id })}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    backgroundColor: isActive ? 'var(--color-primary-muted)' : 'var(--color-surface)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 150ms ease',
+                  }}
                 >
-                  {style.charAt(0).toUpperCase() + style.slice(1)}
+                  <span style={{
+                    width: '28px', height: '28px', borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--color-surface-secondary)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: '0.6875rem',
+                    fontWeight: 700, color: 'var(--color-text-secondary)', flexShrink: 0,
+                  }}>{eng.emoji}</span>
+                  <span style={{ fontSize: '0.875rem', fontWeight: isActive ? 500 : 400, color: isActive ? 'var(--color-primary)' : 'var(--color-text)', flex: 1 }}>
+                    {eng.name}
+                  </span>
+                  {isActive && <Check style={{ width: '14px', height: '14px', color: 'var(--color-primary)' }} />}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-          <div>
-            <label className="label">Time Format</label>
-            <div className="flex gap-2">
-              {['12h', '24h'].map((format) => (
-                <button
-                  key={format}
-                  onClick={() => onUpdate({ timeFormat: format as '12h' | '24h' })}
-                  className={cn(
-                    'flex-1 py-2 px-4 rounded-lg border transition-all',
-                    settings.timeFormat === format
-                      ? 'bg-primary border-primary text-white'
-                      : 'bg-surface hover:bg-surface-hover border-border text-text'
-                  )}
-                >
-                  {format}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="showSeconds"
-              checked={settings.showSeconds}
-              onChange={(e) => onUpdate({ showSeconds: e.target.checked })}
-              className="w-4 h-4 accent-primary"
-            />
-            <label htmlFor="showSeconds" className="text-body-md text-text">Show seconds</label>
-          </div>
-        </div>
-      </div>
+        </SettingsRow>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Time Zones</h3>
-        <p className="text-body-sm text-text-muted mb-4">Add time zones to the world clock.</p>
-        <div className="space-y-2">
-          {settings.timeZones.length === 0 && (
-            <p className="text-body-sm text-text-muted italic">No time zones added yet</p>
-          )}
-          {settings.timeZones.map((tz, index) => (
-            <div key={`${tz.name}-${tz.zone}`} className="flex items-center justify-between p-3 bg-surface border border-border rounded-lg">
-              <div>
-                <span className="font-medium text-text">{tz.name}</span>
-                <span className="ml-2 text-body-sm text-text-muted">({tz.zone})</span>
-              </div>
-              <button
-                onClick={() => {
-                  const updated = settings.timeZones.filter((_, i) => i !== index);
-                  onUpdate({ timeZones: updated });
-                }}
-                className="btn-icon p-1.5 text-text-muted hover:text-error"
-                title="Remove time zone"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <AddTimeZoneButton onAdd={(tz) => onUpdate({ timeZones: [...settings.timeZones, tz] })} />
-      </div>
+        <SettingsRow label="Time format">
+          <SegmentedControl options={['12h', '24h'] as const} value={(settings.timeFormat ?? '24h') as '12h' | '24h'} onChange={(v) => onUpdate({ timeFormat: v })} />
+        </SettingsRow>
+
+        <SettingsRow label="Show seconds">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <input type="checkbox" id="showSecs" checked={settings.showSeconds} onChange={(e) => onUpdate({ showSeconds: e.target.checked })} className="checkbox" aria-labelledby="showSecs-label" />
+            <label id="showSecs-label" htmlFor="showSecs" style={{ fontSize: '0.875rem', color: 'var(--color-text)', cursor: 'pointer' }}>Show seconds on clock widgets</label>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
     </div>
   );
 }
 
-function AddTimeZoneButton({ onAdd }: { onAdd: (tz: { id: string; name: string; zone: string; enabled: boolean }) => void }) {
-  const [adding, setAdding] = useState(false);
-
-  const commonTimeZones = [
-    'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Paris',
-    'Europe/Berlin', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Tokyo',
-    'Australia/Sydney', 'Pacific/Auckland', 'UTC',
-  ];
-
-  return adding ? (
-    <div className="mt-3 p-4 bg-surface border border-border rounded-xl space-y-3">
-      <select
-        className="input"
-        autoFocus
-        onChange={(e) => {
-          if (!e.target.value) return;
-          const zone = e.target.value;
-          const name = new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: 'short' })
-            .formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value || zone.split('/').pop()!.replace(/_/g, ' ');
-          onAdd({ id: `tz-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name, zone, enabled: true });
-          setAdding(false);
-        }}
-        defaultValue=""
-      >
-        <option value="" disabled>Select a time zone…</option>
-        {commonTimeZones.map((zone) => (
-          <option key={zone} value={zone}>{zone.replace(/_/g, ' ')}</option>
-        ))}
-      </select>
-      <div className="flex justify-end">
-        <button onClick={() => setAdding(false)} className="btn-secondary text-body-sm">Cancel</button>
-      </div>
-    </div>
-  ) : (
-    <button onClick={() => setAdding(true)} className="btn-secondary mt-3">
-      <Plus className="w-4 h-4 mr-2" /> Add Time Zone
-    </button>
-  );
-}
+/* ─── Hidden Elements ─────────────────────── */
 
 function HiddenSection({
   settings,
@@ -998,207 +1133,151 @@ function HiddenSection({
   onShowInstance,
 }: {
   settings: import('../../types').HiddenSettings;
-  onUpdate: (updates: Partial<import('../../types').HiddenSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').HiddenSettings>) => Promise<void>;
   hiddenWidgets: Set<string>;
   widgets: import('../../types').WidgetConfig[];
   onHideInstance: (id: string) => void;
   onShowInstance: (id: string) => void;
 }) {
   const allWidgets = getRegisteredWidgets();
-  const categories = getWidgetCategories();
   const definitionNames = new Map(allWidgets.map((w) => [w.type, w.name]));
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Hidden Widgets</h3>
-        <p className="text-body-sm text-text-muted mb-4">Manage widget visibility. Hidden widgets can be restored here.</p>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '0.5rem' }}>Visibility</h2>
+      <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+        Control which widgets are visible on this workspace.
+      </p>
 
-        <div className="space-y-2 mb-6">
-          <h4 className="text-body-sm font-medium text-text">On this dashboard</h4>
-          {widgets.length === 0 && (
-            <p className="text-body-sm text-text-muted italic">No widgets on this workspace yet</p>
-          )}
+      {widgets.length === 0 ? (
+        <div className="empty-state" style={{ height: '120px' }}>
+          <p className="empty-state-description">No widgets on this workspace yet</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1.25rem' }}>
           {widgets.map((widget) => {
             const isHidden = widget.hidden || hiddenWidgets.has(widget.id);
             return (
-              <div key={widget.id} className="flex items-center justify-between p-3 bg-surface border border-border rounded-xl">
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-text">{definitionNames.get(widget.type) || widget.type}</span>
-                  {isHidden && <span className="badge text-xs bg-warning/20 text-warning">Hidden</span>}
+              <div key={widget.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--color-text)' }}>{definitionNames.get(widget.type) || widget.type}</span>
+                  {isHidden && <span className="badge badge-warning" style={{ fontSize: '0.625rem' }}>Hidden</span>}
                 </div>
-                <button
-                  onClick={() => (isHidden ? onShowInstance(widget.id) : onHideInstance(widget.id))}
-                  className={cn('btn-secondary text-body-sm', isHidden && 'text-primary')}
-                >
+                <button onClick={() => isHidden ? onShowInstance(widget.id) : onHideInstance(widget.id)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', height: '28px', padding: '0 0.625rem' }}>
                   {isHidden ? 'Show' : 'Hide'}
                 </button>
               </div>
             );
           })}
         </div>
+      )}
 
-        <div className="space-y-2">
-          <h4 className="text-body-sm font-medium text-text mr-2">Hide entire widget types</h4>
-          {categories.map((cat) => {
-            const catWidgets = allWidgets.filter((w) => w.category === cat);
-            return (
-              <div key={cat} className="bg-surface border border-border rounded-xl p-4">
-                <h5 className="font-medium text-text mb-3 capitalize">{cat}</h5>
-                <div className="space-y-2">
-                  {catWidgets.map((widget) => {
-                    const isTypeHidden = settings.hiddenWidgets.includes(widget.type);
-                    return (
-                      <label key={widget.type} className="flex items-center justify-between cursor-pointer">
-                        <span className="text-body-md text-text">{widget.name}</span>
-                        <input
-                          type="checkbox"
-                          checked={!isTypeHidden}
-                          onChange={(e) => {
-                            const newHidden = e.target.checked
-                              ? settings.hiddenWidgets.filter((id) => id !== widget.type)
-                              : [...settings.hiddenWidgets, widget.type];
-                            onUpdate({ hiddenWidgets: newHidden });
-                          }}
-                          className="w-5 h-5 accent-primary"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Hidden Collections</h3>
-        <p className="text-body-sm text-text-muted">Collection visibility managed per workspace</p>
+      {/* Type-level toggle */}
+      <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>Disable widget types</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {allWidgets.map((widget) => {
+          const isDisabled = settings.hiddenWidgets.includes(widget.type);
+          return (
+            <label key={widget.type} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4375rem 0.75rem', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--color-text)' }}>{widget.name}</span>
+              <input type="checkbox" className="checkbox" checked={!isDisabled}
+                onChange={(e) => {
+                  const updated = e.target.checked
+                    ? settings.hiddenWidgets.filter((id) => id !== widget.type)
+                    : [...settings.hiddenWidgets, widget.type];
+                  onUpdate({ hiddenWidgets: updated });
+                }} />
+            </label>
+          );
+        })}
       </div>
     </div>
   );
 }
+
+/* ─── Shortcuts ─────────────────────────── */
 
 function ShortcutsSection({
   settings,
   onUpdate,
 }: {
   settings: import('../../types').ShortcutSettings;
-  onUpdate: (updates: Partial<import('../../types').ShortcutSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').ShortcutSettings>) => Promise<void>;
 }) {
-  const shortcuts = [
-    { id: 'search', name: 'Open Search', default: 'Ctrl+K', description: 'Focus the search widget' },
-    { id: 'edit', name: 'Toggle Edit Mode', default: 'Ctrl+E', description: 'Enter/exit dashboard editing mode' },
-    { id: 'workspace', name: 'Workspace Switcher', default: 'Ctrl+Shift+W', description: 'Open workspace switcher' },
-    { id: 'settings', name: 'Open Settings', default: 'Ctrl+,', description: 'Open settings drawer' },
-    { id: 'addWidget', name: 'Add Widget', default: 'Ctrl+Shift+A', description: 'Open add widget modal' },
-    { id: 'commandPalette', name: 'Command Palette', default: 'Ctrl+Shift+P', description: 'Open command palette' },
+  const SHORTCUTS = [
+    { id: 'search',       name: 'Focus search',    desc: 'Focus the search widget', default: 'Ctrl+K' },
+    { id: 'edit',         name: 'Edit layout',     desc: 'Toggle edit mode',         default: 'Ctrl+E' },
+    { id: 'workspace',    name: 'Switch workspace',desc: 'Open workspace switcher',  default: 'Ctrl+Shift+W' },
+    { id: 'settings',     name: 'Open settings',   desc: 'Open settings drawer',    default: 'Ctrl+,' },
+    { id: 'addWidget',    name: 'Add widget',      desc: 'Open add-widget panel',   default: 'Ctrl+Shift+A' },
   ];
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [capturedKeys, setCapturedKeys] = useState<string>('');
+  const [capturedKeys, setCapturedKeys] = useState('');
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const handleKeyDown = (e: React.KeyboardEvent, shortcutId: string) => {
+  const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.key === 'Escape') {
-      setEditingId(null);
-      setCapturedKeys('');
-      return;
-    }
+    if (e.key === 'Escape') { setEditingId(null); setCapturedKeys(''); return; }
     const parts: string[] = [];
     if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
     if (e.shiftKey) parts.push('Shift');
     if (e.altKey) parts.push('Alt');
-    if (e.key && e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Alt' && e.key !== 'Meta') {
-      parts.push(e.key.length === 1 ? e.key.toLowerCase() : e.key.toUpperCase());
+    if (e.key && !['Control','Shift','Alt','Meta'].includes(e.key)) {
+      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
     }
-    // Require at least the key (plus one modifier for sensible combos)
-    if (parts.length === 0) return;
     const combo = parts.join('+');
     setCapturedKeys(combo);
-    // Commit immediately on a complete combo (key included)
-    if (parts.some((p) => !['Ctrl', 'Shift', 'Alt'].includes(p))) {
-      const newShortcuts = { ...settings.shortcuts, [shortcutId]: combo };
-      onUpdate({ shortcuts: newShortcuts });
+    if (parts.some((p) => !['Ctrl','Shift','Alt'].includes(p))) {
+      onUpdate({ shortcuts: { ...settings.shortcuts, [id]: combo } });
       setEditingId(null);
       setCapturedKeys('');
     }
   };
 
-  const startEditing = (shortcutId: string) => {
-    setEditingId(shortcutId);
-    setCapturedKeys('');
-    // Move focus to the row so its keydown handler receives the keys
-    requestAnimationFrame(() => rowRefs.current[shortcutId]?.focus());
-  };
-
-  const resetShortcut = (shortcutId: string) => {
-    const defaultShortcut = shortcuts.find((s) => s.id === shortcutId)?.default;
-    if (defaultShortcut) {
-      const newShortcuts = { ...settings.shortcuts };
-      delete newShortcuts[shortcutId];
-      onUpdate({ shortcuts: newShortcuts });
-    }
-  };
-
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h3 className="text-heading-md font-semibold text-text mb-4">Keyboard Shortcuts</h3>
-      <p className="text-body-sm text-text-muted mb-4">
-        Click a shortcut to record a new key combination. Press Escape to cancel.
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '0.5rem' }}>Keyboard shortcuts</h2>
+      <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
+        Click a shortcut to rebind it. Press Escape to cancel.
       </p>
-      <div className="space-y-3">
-        {shortcuts.map((shortcut) => {
-          const isEditing = editingId === shortcut.id;
-          const currentShortcut = settings.shortcuts[shortcut.id] || shortcut.default;
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {SHORTCUTS.map((sc) => {
+          const isEditing = editingId === sc.id;
+          const current = settings.shortcuts[sc.id] || sc.default;
           return (
             <div
-              key={shortcut.id}
-              ref={(el) => { rowRefs.current[shortcut.id] = el; }}
-              className="flex items-center justify-between p-4 bg-surface border border-border rounded-xl transition-all"
-              onClick={() => !isEditing && startEditing(shortcut.id)}
-              onKeyDown={(e) => isEditing && handleKeyDown(e, shortcut.id)}
+              key={sc.id}
+              ref={(el) => { rowRefs.current[sc.id] = el; }}
+              role="button"
               tabIndex={isEditing ? 0 : -1}
+              onClick={() => !isEditing && setEditingId(sc.id) && requestAnimationFrame(() => rowRefs.current[sc.id]?.focus())}
+              onKeyDown={(e) => isEditing && handleKeyDown(e, sc.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.625rem 0.75rem',
+                borderRadius: 'var(--radius-md)',
+                border: `1px solid ${isEditing ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                backgroundColor: isEditing ? 'var(--color-primary-muted)' : 'var(--color-surface)',
+                cursor: isEditing ? 'default' : 'pointer',
+                transition: 'all 150ms ease',
+                outline: 'none',
+              }}
             >
-              <div className="flex-1">
-                <h4 className="font-medium text-text">{shortcut.name}</h4>
-                <p className="text-body-sm text-text-muted">{shortcut.description}</p>
+              <div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text)' }}>{sc.name}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{sc.desc}</div>
               </div>
-              <div className="flex items-center gap-3">
-                <kbd
-                  className={cn(
-                    'px-3 py-1.5 bg-surface-elevated border border-border rounded text-body-sm font-mono text-text transition-all',
-                    isEditing && 'bg-primary/20 border-primary animate-pulse'
-                  )}
-                >
-                  {isEditing ? (capturedKeys || 'Press keys...') : currentShortcut}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <kbd style={{ ...(isEditing ? { borderColor: 'var(--color-primary)', color: 'var(--color-primary)' } : {}) }}>
+                  {isEditing ? (capturedKeys || 'Press keys…') : current}
                 </kbd>
-                {isEditing && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingId(null);
-                      setCapturedKeys('');
-                    }}
-                    className="text-text-muted hover:text-text p-1"
-                    aria-label="Cancel"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-                {!isEditing && currentShortcut !== shortcut.default && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      resetShortcut(shortcut.id);
-                    }}
-                    className="text-text-muted hover:text-text p-1"
-                    aria-label="Reset to default"
-                  >
-                    <RotateCcw className="w-4 h-4" />
+                {!isEditing && current !== sc.default && (
+                  <button onClick={(e) => { e.stopPropagation(); onUpdate({ shortcuts: { ...settings.shortcuts, [sc.id]: sc.default } }); }} className="btn-icon" style={{ width: '24px', height: '24px' }} aria-label="Reset to default">
+                    <RotateCcw style={{ width: '12px', height: '12px' }} />
                   </button>
                 )}
               </div>
@@ -1210,6 +1289,8 @@ function ShortcutsSection({
   );
 }
 
+/* ─── Data ─────────────────────────── */
+
 function DataSection({
   settings,
   onUpdate,
@@ -1218,241 +1299,104 @@ function DataSection({
   resetSettings,
 }: {
   settings: import('../../types').DataSettings;
-  onUpdate: (updates: Partial<import('../../types').DataSettings>) => Promise<void>;
+  onUpdate: (u: Partial<import('../../types').DataSettings>) => Promise<void>;
   exportSettings: () => import('../../types').GlobalSettings;
-  importSettings: (settings: import('../../types').GlobalSettings) => Promise<void>;
+  importSettings: (s: import('../../types').GlobalSettings) => Promise<void>;
   resetSettings: () => Promise<void>;
 }) {
   const workspaceStore = useWorkspaceStore.getState();
-  const [importFile, setImportFile] = useState<File | null>(null);
 
-  const handleExportSettings = () => {
-    const data = exportSettings();
+  const download = (data: unknown, filename: string) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nebula-settings-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleExportWorkspace = () => {
-    const activeWorkspaceId = workspaceStore.activeWorkspaceId;
-    if (!activeWorkspaceId) return;
-    workspaceStore.exportWorkspace(activeWorkspaceId).then((ws) => {
-      const blob = new Blob([JSON.stringify(ws, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nebula-workspace-${ws.name}-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  };
-
-  const handleExportAllWorkspaces = () => {
-    const data = {
-      workspaces: workspaceStore.workspaces,
-      activeWorkspaceId: workspaceStore.activeWorkspaceId,
-      exportedAt: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `nebula-all-workspaces-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleCreateBackup = () => {
-    const data = {
-      settings: exportSettings(),
-      workspaces: workspaceStore.workspaces,
-      activeWorkspaceId: workspaceStore.activeWorkspaceId,
-      tasks: null,
-      exportedAt: new Date().toISOString(),
-      version: '1.0.0',
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `nebula-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportFile = async (file: File, type: 'settings' | 'workspace' | 'backup') => {
-    const text = await file.text();
-    try {
-      const data = JSON.parse(text);
-      if (type === 'settings') {
-        await importSettings(data);
-      } else if (type === 'workspace') {
-        await workspaceStore.importWorkspace(data);
-      } else if (type === 'backup') {
-        if (data.settings) await importSettings(data.settings);
-        if (data.workspaces) {
-          for (const ws of data.workspaces) {
-            await workspaceStore.importWorkspace(ws);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Import failed:', error);
-      alert('Failed to import: invalid file format');
-    }
-  };
-
-  const handleImportSettings = () => {
+  const importJson = (handler: (data: unknown) => void) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) handleImportFile(file, 'settings');
+      if (!file) return;
+      try { handler(JSON.parse(await file.text())); } catch { alert('Invalid JSON file'); }
     };
     input.click();
   };
 
-  const handleImportWorkspace = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) handleImportFile(file, 'workspace');
-    };
-    input.click();
-  };
-
-  const handleRestoreBackup = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) handleImportFile(file, 'backup');
-    };
-    input.click();
-  };
-
-  const handleResetWorkspace = async () => {
-    if (!confirm('Reset current workspace? All its widgets, collections, links and tasks will be removed. This cannot be undone.')) return;
-    const activeWorkspaceId = workspaceStore.activeWorkspaceId;
-    if (!activeWorkspaceId) return;
-    // Reset the workspace contents instead of deleting the workspace itself,
-    // so the dashboard always keeps at least one workspace
-    await workspaceStore.updateWorkspace(activeWorkspaceId, {
-      widgets: [],
-      collections: [],
-      quickLinks: [],
-      tasks: [],
-    });
-    await resetSettings();
-    window.location.reload();
-  };
-
-  const handleClearAllData = async () => {
-    if (!confirm('Clear ALL local data? This cannot be undone and will remove all workspaces, settings, and tasks.')) return;
-    if (!confirm('Are you absolutely sure?')) return;
-    await storageService.clearAll();
-    window.location.reload();
-  };
+  const DataButton = ({ Icon, label, onClick, danger }: { Icon: React.ComponentType<{ style?: React.CSSProperties }>; label: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        width: '100%',
+        padding: '0.625rem 0.75rem',
+        borderRadius: 'var(--radius-md)',
+        border: `1px solid ${danger ? 'var(--color-border)' : 'var(--color-border)'}`,
+        backgroundColor: 'var(--color-surface)',
+        cursor: 'pointer',
+        fontSize: '0.875rem',
+        color: danger ? 'var(--color-error)' : 'var(--color-text)',
+        textAlign: 'left',
+        transition: 'all 150ms ease',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--color-surface-hover)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--color-surface)'; }}
+    >
+      <Icon style={{ width: '15px', height: '15px', flexShrink: 0 }} />
+      {label}
+    </button>
+  );
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Export Data</h3>
-        <div className="space-y-3">
-          <button onClick={handleExportSettings} className="btn-secondary w-full justify-start">
-            <Download className="w-4 h-4 mr-2" /> Export Settings (JSON)
-          </button>
-          <button onClick={handleExportWorkspace} className="btn-secondary w-full justify-start">
-            <Download className="w-4 h-4 mr-2" /> Export Current Workspace (JSON)
-          </button>
-          <button onClick={handleExportAllWorkspaces} className="btn-secondary w-full justify-start">
-            <Download className="w-4 h-4 mr-2" /> Export All Workspaces (JSON)
-          </button>
-          <button onClick={handleCreateBackup} className="btn-secondary w-full justify-start">
-            <Cloud className="w-4 h-4 mr-2" /> Create Full Backup
-          </button>
-        </div>
-      </div>
+    <div>
+      <h2 className="settings-heading" style={{ marginBottom: '1rem' }}>Data</h2>
 
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Import Data</h3>
-        <div className="space-y-3">
-          <button onClick={handleImportSettings} className="btn-secondary w-full justify-start">
-            <Upload className="w-4 h-4 mr-2" /> Import Settings (JSON)
-          </button>
-          <button onClick={handleImportWorkspace} className="btn-secondary w-full justify-start">
-            <Upload className="w-4 h-4 mr-2" /> Import Workspace (JSON)
-          </button>
-          <button onClick={handleRestoreBackup} className="btn-secondary w-full justify-start">
-            <RotateCcw className="w-4 h-4 mr-2" /> Restore from Backup
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Danger Zone</h3>
-        <div className="space-y-3">
-          <button onClick={handleResetWorkspace} className="btn-secondary w-full justify-start text-warning hover:bg-warning/10">
-            <Trash2 className="w-4 h-4 mr-2" /> Reset Current Workspace
-          </button>
-          <button onClick={handleClearAllData} className="btn-secondary w-full justify-start text-error hover:bg-error/10">
-            <Trash2 className="w-4 h-4 mr-2" /> Clear All Local Data
-          </button>
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-heading-md font-semibold text-text mb-4">Auto Backup</h3>
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="autoBackup"
-              checked={settings.autoBackup}
-              onChange={(e) => onUpdate({ autoBackup: e.target.checked })}
-              className="w-4 h-4 accent-primary"
-            />
-            <label htmlFor="autoBackup" className="text-body-md text-text">Enable automatic backups</label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>Export</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <DataButton Icon={Download} label="Export settings" onClick={() => download(exportSettings(), `nebula-settings-${new Date().toISOString().split('T')[0]}.json`)} />
+            <DataButton Icon={Download} label="Export current workspace" onClick={() => { const wsId = workspaceStore.activeWorkspaceId; if (wsId) workspaceStore.exportWorkspace(wsId).then((ws) => download(ws, `nebula-workspace-${ws.name}-${new Date().toISOString().split('T')[0]}.json`)); }} />
+            <DataButton Icon={Cloud} label="Create full backup" onClick={() => download({ settings: exportSettings(), workspaces: workspaceStore.workspaces, activeWorkspaceId: workspaceStore.activeWorkspaceId, exportedAt: new Date().toISOString(), version: '1.0.0' }, `nebula-backup-${new Date().toISOString().split('T')[0]}.json`)} />
           </div>
-          {settings.autoBackup && (
-            <div>
-              <label className="label">Backup Interval: {settings.backupInterval / 3600000}h</label>
-              <input
-                type="range"
-                min="1"
-                max="168"
-                value={settings.backupInterval / 3600000}
-                onChange={(e) => onUpdate({ backupInterval: Number(e.target.value) * 3600000 })}
-                className="w-full accent-primary"
-              />
-            </div>
-          )}
-          {settings.autoBackup && (
-            <div>
-              <label className="label">Max Backups: {settings.maxBackups}</label>
-              <input
-                type="range"
-                min="1"
-                max="50"
-                value={settings.maxBackups}
-                onChange={(e) => onUpdate({ maxBackups: Number(e.target.value) })}
-                className="w-full accent-primary"
-              />
-            </div>
-          )}
+        </div>
+
+        <div>
+          <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>Import</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <DataButton Icon={Upload} label="Import settings" onClick={() => importJson((d) => importSettings(d as import('../../types').GlobalSettings))} />
+            <DataButton Icon={Upload} label="Import workspace" onClick={() => importJson((d) => workspaceStore.importWorkspace(d as import('../../types').Workspace))} />
+            <DataButton Icon={RotateCcw} label="Restore from backup" onClick={() => importJson(async (d: any) => { if (d.settings) await importSettings(d.settings); if (d.workspaces) for (const ws of d.workspaces) await workspaceStore.importWorkspace(ws); })} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: '0.875rem',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            backgroundColor: 'rgba(239,68,68,0.04)',
+          }}
+        >
+          <h3 className="settings-heading" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem', color: 'var(--color-error)' }}>Danger zone</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <DataButton Icon={Trash2} label="Reset to defaults" danger onClick={async () => { if (confirm('Reset all settings to defaults?')) { await resetSettings(); window.location.reload(); } }} />
+            <DataButton Icon={Trash2} label="Clear all local data" danger onClick={async () => { if (confirm('Delete ALL data? This cannot be undone.') && confirm('Are you sure?')) { await storageService.clearAll(); window.location.reload(); } }} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+/* ─── Workspaces ─────────────────────────── */
 
 function WorkspacesSection({
   workspaces,
@@ -1469,140 +1413,117 @@ function WorkspacesSection({
   workspaces: import('../../types').Workspace[];
   activeWorkspaceId: string | null;
   onCreate: (name: string, icon?: string) => Promise<import('../../types').Workspace>;
-  onUpdate: (id: string, updates: Partial<import('../../types').Workspace>) => Promise<void>;
+  onUpdate: (id: string, u: Partial<import('../../types').Workspace>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onDuplicate: (id: string) => Promise<import('../../types').Workspace>;
   onSelect: (id: string) => Promise<void>;
   onSetDefault: (id: string) => Promise<void>;
   onExport: (id: string) => Promise<import('../../types').Workspace>;
-  onImport: (workspace: import('../../types').Workspace) => Promise<import('../../types').Workspace>;
+  onImport: (ws: import('../../types').Workspace) => Promise<import('../../types').Workspace>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('layout-grid');
 
-  const icons = [
-    { id: 'layout-grid', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'code', label: 'Code', icon: Code },
-    { id: 'briefcase', label: 'Work', icon: Briefcase },
-    { id: 'book-open', label: 'Study', icon: BookOpen },
-    { id: 'heart', label: 'Personal', icon: Heart },
-    { id: 'gamepad2', label: 'Entertainment', icon: Gamepad2 },
+  const ICONS = [
+    { id: 'layout-grid', Icon: LayoutDashboard },
+    { id: 'code', Icon: Code },
+    { id: 'briefcase', Icon: Briefcase },
+    { id: 'book-open', Icon: BookOpen },
+    { id: 'heart', Icon: Heart },
+    { id: 'gamepad2', Icon: Gamepad2 },
   ];
+  const ICON_MAP = Object.fromEntries(ICONS.map(({ id, Icon }) => [id, Icon]));
 
-  const iconMap: Record<string, React.ComponentType<{ className?: string }>> = Object.fromEntries(
-    icons.map((ic) => [ic.id, ic.icon])
-  ) as Record<string, React.ComponentType<{ className?: string }>>;
+  const download = (data: unknown, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h3 className="text-heading-md font-semibold text-text">Workspaces</h3>
-        <button onClick={() => setShowCreate(true)} className="btn-primary">
-          <Plus className="w-4 h-4 mr-2" /> New Workspace
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <h2 className="settings-heading" style={{ marginBottom: 0 }}>Workspaces</h2>
+        <button onClick={() => setShowCreate(true)} className="btn btn-primary btn-sm">
+          <Plus style={{ width: '13px', height: '13px' }} />
+          New
         </button>
       </div>
 
-      <div className="space-y-3">
-        {workspaces.map((ws) => (
-          <div
-            key={ws.id}
-            className={cn(
-              'flex items-center justify-between p-4 bg-surface border border-border rounded-xl',
-              ws.id === activeWorkspaceId && 'border-primary/50 bg-primary/5'
-            )}
-          >
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-primary/20 rounded-lg">
-                {iconMap[ws.icon] && (() => {
-                  const Icon = iconMap[ws.icon];
-                  return <Icon className="w-5 h-5 text-primary" />;
-                })()}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+        {workspaces.map((ws) => {
+          const Icon = ICON_MAP[ws.icon] || LayoutDashboard;
+          const isActive = ws.id === activeWorkspaceId;
+          return (
+            <div key={ws.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', borderRadius: 'var(--radius-lg)', border: `1px solid ${isActive ? 'var(--color-primary)' : 'var(--color-border)'}`, backgroundColor: isActive ? 'var(--color-primary-muted)' : 'var(--color-surface)' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-md)', backgroundColor: isActive ? 'rgba(34,211,238,0.15)' : 'var(--color-surface-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon style={{ width: '15px', height: '15px', color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)' }} aria-hidden />
               </div>
-              <div>
-                <h4 className="font-medium text-text">{ws.name}</h4>
-                <p className="text-body-xs text-text-muted">{ws.widgets.length} widgets · {ws.collections.length} collections</p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.875rem', fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--color-primary)' : 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ws.name}
+                  {ws.isDefault && <span className="badge badge-primary" style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}>Default</span>}
+                </div>
+                <div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>{ws.widgets.length} widgets · {ws.collections.length} collections</div>
               </div>
-              {ws.isDefault && <span className="badge badge-primary text-xs">Default</span>}
+              <div style={{ display: 'flex', gap: '0.125rem', flexShrink: 0 }}>
+                {!isActive && <button onClick={() => onSelect(ws.id)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', height: '26px', padding: '0 0.5rem' }}>Switch</button>}
+                {!ws.isDefault && <button onClick={() => onSetDefault(ws.id)} className="btn-icon" style={{ width: '26px', height: '26px' }} title="Set default"><Star style={{ width: '12px', height: '12px' }} /></button>}
+                <button onClick={() => onDuplicate(ws.id)} className="btn-icon" style={{ width: '26px', height: '26px' }} title="Duplicate"><Copy style={{ width: '12px', height: '12px' }} /></button>
+                <button onClick={() => onExport(ws.id).then((w) => download(w, `nebula-workspace-${w.name}.json`))} className="btn-icon" style={{ width: '26px', height: '26px' }} title="Export"><Download style={{ width: '12px', height: '12px' }} /></button>
+                {workspaces.length > 1 && <button onClick={() => onDelete(ws.id)} className="btn-icon" style={{ width: '26px', height: '26px', color: 'var(--color-error)' }} title="Delete"><Trash2 style={{ width: '12px', height: '12px' }} /></button>}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {ws.id !== activeWorkspaceId && (
-                <button onClick={() => onSelect(ws.id)} className="btn-secondary text-body-sm">
-                  Switch
-                </button>
-              )}
-              <button onClick={() => onDuplicate(ws.id)} className="btn-icon p-1.5 text-text-muted hover:text-text" title="Duplicate">
-                <Copy className="w-4 h-4" />
-              </button>
-              <button onClick={() => onExport(ws.id)} className="btn-icon p-1.5 text-text-muted hover:text-text" title="Export">
-                <Download className="w-4 h-4" />
-              </button>
-              {!ws.isDefault && (
-                <button onClick={() => onSetDefault(ws.id)} className="btn-icon p-1.5 text-text-muted hover:text-text" title="Set as default">
-                  <Star className="w-4 h-4" />
-                </button>
-              )}
-              {workspaces.length > 1 && (
-                <button onClick={() => onDelete(ws.id)} className="btn-icon p-1.5 text-error hover:bg-error/10" title="Delete">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
+      {/* Create modal */}
       <AnimatePresence>
         {showCreate && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay/80 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+            style={{ backgroundColor: 'var(--color-overlay)' }}
             onClick={() => setShowCreate(false)}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="w-full max-w-md bg-surface-elevated border border-border rounded-xl p-6 shadow-xl"
+              exit={{ opacity: 0 }}
+              className="modal-panel"
+              style={{ width: '100%', maxWidth: '380px' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-heading-md font-semibold text-text mb-4">Create Workspace</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="label">Name</label>
-                  <input
-                    type="text"
-                    value={newWorkspaceName}
-                    onChange={(e) => setNewWorkspaceName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && newWorkspaceName.trim() && onCreate(newWorkspaceName.trim())}
-                    placeholder="e.g., Development, Work, Personal"
-                    className="input"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="label">Icon</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {icons.map((ic) => (
-                      <button
-                        key={ic.id}
-                        onClick={() => onCreate(newWorkspaceName.trim() || 'New Workspace', ic.id)}
-                        className={cn(
-                          'p-3 rounded-lg border-2 transition-all',
-                          'border-border hover:border-primary'
-                        )}
-                      >
-                        <ic.icon className="w-6 h-6 text-text" />
+              <div className="modal-header">
+                <h3 className="modal-title">Create workspace</h3>
+                <button onClick={() => setShowCreate(false)} className="btn-icon" style={{ marginLeft: 'auto' }}><X style={{ width: '15px', height: '15px' }} /></button>
+              </div>
+              <div className="modal-body" style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <SettingsRow label="Name">
+                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && newName.trim() && onCreate(newName.trim(), newIcon).then(() => setShowCreate(false))} placeholder="e.g., Development, Personal" className="input" style={{ height: '36px' }} autoFocus />
+                </SettingsRow>
+                <SettingsRow label="Icon">
+                  <div style={{ display: 'flex', gap: '0.375rem' }}>
+                    {ICONS.map(({ id, Icon }) => (
+                      <button key={id} onClick={() => setNewIcon(id)} style={{ width: '32px', height: '32px', borderRadius: 'var(--radius-md)', border: `1px solid ${newIcon === id ? 'var(--color-primary)' : 'var(--color-border)'}`, backgroundColor: newIcon === id ? 'var(--color-primary-muted)' : 'var(--color-surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon style={{ width: '14px', height: '14px', color: newIcon === id ? 'var(--color-primary)' : 'var(--color-text-secondary)' }} aria-hidden />
                       </button>
                     ))}
                   </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
-                  <button onClick={() => { onCreate(newWorkspaceName.trim() || 'New Workspace'); setShowCreate(false); }} className="btn-primary" disabled={!newWorkspaceName.trim()}>
-                    Create
-                  </button>
-                </div>
+                </SettingsRow>
+              </div>
+              <div className="modal-footer">
+                <button onClick={() => setShowCreate(false)} className="btn btn-secondary btn-sm">Cancel</button>
+                <button onClick={() => { if (newName.trim()) { onCreate(newName.trim(), newIcon); setShowCreate(false); setNewName(''); } }} className="btn btn-primary btn-sm" disabled={!newName.trim()}>
+                  <Plus style={{ width: '13px', height: '13px' }} />
+                  Create
+                </button>
               </div>
             </motion.div>
           </motion.div>

@@ -1,262 +1,254 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { cn } from '../../utils/helpers';
-import { Play, Pause, RotateCcw, Settings, Bell, Volume2, VolumeX, AlertCircle, CheckCircle, Clock, CheckCircle as CheckCircleIcon } from 'lucide-react';
+import { Play, Pause, RotateCcw, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WidgetProps } from '../../types';
 import type { PomodoroWidgetSettings } from '../schemas';
 
-type PomodoroState = 'idle' | 'work' | 'break' | 'longBreak';
-type PomodoroPhase = 'work' | 'break' | 'longBreak';
+type Phase = 'work' | 'break' | 'longBreak';
 
-const PHASE_LABELS: Record<PomodoroPhase, string> = {
-  work: 'Focus Time',
-  break: 'Short Break',
-  longBreak: 'Long Break',
+const PHASE_LABEL: Record<Phase, string> = {
+  work:      'Focus',
+  break:     'Short break',
+  longBreak: 'Long break',
 };
 
-const PHASE_COLORS: Record<PomodoroPhase, string> = {
-  work: 'var(--color-primary)',
-  break: 'var(--color-success)',
+const PHASE_COLOR: Record<Phase, string> = {
+  work:      'var(--color-primary)',
+  break:     'var(--color-success)',
   longBreak: 'var(--color-info)',
 };
 
 export function PomodoroWidget({ config, onConfigChange, onRemove }: WidgetProps) {
   const settings = config.settings as PomodoroWidgetSettings;
-  const [state, setState] = useState<PomodoroState>('idle');
-  const [currentPhase, setCurrentPhase] = useState<PomodoroPhase>('work');
+  const [phase, setPhase] = useState<Phase>('work');
   const [timeLeft, setTimeLeft] = useState(settings.workDuration * 60);
-  const [completedSessions, setCompletedSessions] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [sessions, setSessions] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<AudioContext | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  const getPhaseDuration = useCallback((phase: PomodoroPhase) => {
-    switch (phase) {
-      case 'work': return settings.workDuration * 60;
-      case 'break': return settings.breakDuration * 60;
-      case 'longBreak': return settings.longBreakDuration * 60;
-    }
-  }, [settings]);
-
-  const playSound = useCallback(() => {
-    if (settings.soundEnabled && audioRef.current) {
-      audioRef.current.play().catch(() => {});
-    }
+  /* ── tone generator — no external file needed ── */
+  const beep = useCallback(() => {
+    if (!settings.soundEnabled) return;
+    try {
+      if (!audioRef.current) audioRef.current = new AudioContext();
+      const ctx = audioRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.6);
+    } catch {}
   }, [settings.soundEnabled]);
 
-  const showNotification = useCallback((title: string, body: string) => {
-    if (settings.notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+  const notify = useCallback((title: string, body: string) => {
+    if (!settings.notificationsEnabled) return;
+    if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(title, { body, icon: '/icons/icon-128.png' });
     }
   }, [settings.notificationsEnabled]);
 
-  const requestNotificationPermission = useCallback(() => {
+  useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
 
-  useEffect(() => {
-    requestNotificationPermission();
-  }, [requestNotificationPermission]);
+  const phaseDuration = useCallback((p: Phase) => {
+    if (p === 'work')      return settings.workDuration * 60;
+    if (p === 'break')     return settings.breakDuration * 60;
+    return settings.longBreakDuration * 60;
+  }, [settings]);
 
-  const startTimer = useCallback(() => {
-    if (isRunning) return;
-    setIsRunning(true);
+  const stop = useCallback(() => {
+    setRunning(false);
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+  }, []);
+
+  const start = useCallback(() => {
+    if (running) return;
+    setRunning(true);
     intervalRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          handlePhaseComplete();
+          /* Phase transition */
+          stop();
+          beep();
+          setPhase((curPhase) => {
+            setSessions((n) => {
+              const newN = curPhase === 'work' ? n + 1 : n;
+              if (curPhase === 'work') {
+                const isLong = newN % settings.sessionsBeforeLongBreak === 0;
+                const nextPhase = isLong ? 'longBreak' : 'break';
+                notify('Break time!', `Take a ${isLong ? settings.longBreakDuration : settings.breakDuration} minute break.`);
+                setTimeLeft(isLong ? settings.longBreakDuration * 60 : settings.breakDuration * 60);
+                setPhase(nextPhase);
+              } else {
+                notify('Focus time!', `Start a ${settings.workDuration} minute focus session.`);
+                setTimeLeft(settings.workDuration * 60);
+                setPhase('work');
+              }
+              return newN;
+            });
+            return curPhase;
+          });
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, [isRunning]);
+  }, [running, stop, beep, notify, settings]);
 
-  const pauseTimer = useCallback(() => {
-    setIsRunning(false);
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
-
-  const resetTimer = useCallback(() => {
-    pauseTimer();
-    setState('idle');
-    setCurrentPhase('work');
+  const reset = useCallback(() => {
+    stop();
+    setPhase('work');
     setTimeLeft(settings.workDuration * 60);
-    setCompletedSessions(0);
-  }, [pauseTimer, settings.workDuration]);
+    setSessions(0);
+  }, [stop, settings.workDuration]);
 
-  const handlePhaseComplete = useCallback(() => {
-    pauseTimer();
-    playSound();
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-    if (currentPhase === 'work') {
-      const newCompleted = completedSessions + 1;
-      setCompletedSessions(newCompleted);
-      
-      showNotification('Work session complete!', 'Time for a break.');
-      
-      if (newCompleted % settings.sessionsBeforeLongBreak === 0) {
-        setCurrentPhase('longBreak');
-        setState('longBreak');
-        setTimeLeft(settings.longBreakDuration * 60);
-        showNotification('Long break!', `Take a ${settings.longBreakDuration} minute break.`);
-        if (settings.autoStartBreaks) setTimeout(startTimer, 1000);
-      } else {
-        setCurrentPhase('break');
-        setState('break');
-        setTimeLeft(settings.breakDuration * 60);
-        showNotification('Break time!', `Take a ${settings.breakDuration} minute break.`);
-        if (settings.autoStartBreaks) setTimeout(startTimer, 1000);
-      }
-    } else {
-      showNotification('Break over!', 'Ready to focus?');
-      setCurrentPhase('work');
-      setState('work');
-      setTimeLeft(settings.workDuration * 60);
-      if (settings.autoStartWork) setTimeout(startTimer, 1000);
-    }
-  }, [currentPhase, completedSessions, settings, pauseTimer, playSound, showNotification, startTimer]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const progress = 1 - timeLeft / getPhaseDuration(currentPhase);
+  const total = phaseDuration(phase);
+  const progress = total > 0 ? (total - timeLeft) / total : 0;
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+  const secs = String(timeLeft % 60).padStart(2, '0');
+  const circumference = 2 * Math.PI * 52;
+  const color = PHASE_COLOR[phase];
 
   return (
-    <div className={cn('widget pomodoro-widget h-full flex flex-col', settings.compactMode && 'compact')}>
-      <div className="widget-header flex items-center justify-between p-4">
-        <h3 className="font-semibold text-text">Pomodoro</h3>
-        <div className="flex items-center gap-1">
-          <button onClick={resetTimer} className="p-1.5 hover:bg-surface-elevated rounded-lg transition-colors" title="Reset">
-            <RotateCcw className="w-4 h-4" />
-          </button>
-          <button className="p-1.5 hover:bg-surface-elevated rounded-lg transition-colors" title="Settings">
-            <Settings className="w-4 h-4" />
+    <div className={cn('widget-card', 'pomodoro-widget')}>
+      {/* Header */}
+      <div className="widget-header">
+        <span className="widget-title">
+          <Bell aria-hidden />
+          Pomodoro
+        </span>
+        <div className="widget-actions">
+          <button onClick={reset} className="btn-icon" title="Reset timer" aria-label="Reset">
+            <RotateCcw style={{ width: '13px', height: '13px' }} />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
-        <div className="relative w-48 h-48">
-          <svg className="w-full h-full transform -rotate-90">
+      {/* Timer */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '1rem',
+          minHeight: 0,
+          padding: '0.5rem 0',
+        }}
+      >
+        {/* Circular progress */}
+        <div style={{ position: 'relative', width: '120px', height: '120px' }}>
+          <svg
+            width="120"
+            height="120"
+            viewBox="0 0 120 120"
+            style={{ transform: 'rotate(-90deg)' }}
+            aria-hidden
+          >
+            {/* Track */}
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--color-border)" strokeWidth="6" />
+            {/* Progress */}
             <circle
-              cx="96"
-              cy="96"
-              r="88"
+              cx="60"
+              cy="60"
+              r="52"
               fill="none"
-              stroke="var(--color-border)"
-              strokeWidth="8"
-            />
-            <motion.circle
-              cx="96"
-              cy="96"
-              r="88"
-              fill="none"
-              stroke={PHASE_COLORS[currentPhase]}
-              strokeWidth="8"
+              stroke={color}
+              strokeWidth="6"
               strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 88}
-              strokeDashoffset={2 * Math.PI * 88 * (1 - progress)}
-              style={{ filter: 'drop-shadow(0 0 8px currentColor)' }}
-              transition={{ duration: 0.5, ease: 'linear' }}
+              strokeDasharray={circumference}
+              strokeDashoffset={circumference * (1 - progress)}
+              style={{ transition: 'stroke-dashoffset 1s linear, stroke 400ms ease' }}
             />
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-body-xs text-text-muted uppercase tracking-wider mb-1">
-              {PHASE_LABELS[currentPhase]}
-            </div>
-            <motion.div
-              key={timeLeft}
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              className="text-4xl font-mono font-light text-text tabular-nums"
+
+          {/* Time text */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '1px',
+            }}
+          >
+            <div
+              className="tabular-nums"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '1.625rem',
+                fontWeight: 500,
+                color: 'var(--color-text)',
+                lineHeight: 1,
+              }}
+              aria-live="polite"
+              aria-label={`Time remaining: ${mins} minutes ${secs} seconds`}
             >
-              {formatTime(timeLeft)}
-            </motion.div>
-            <div className="text-body-sm text-text-muted mt-2">
-              {completedSessions} sessions completed
+              {mins}:{secs}
+            </div>
+            <div style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {PHASE_LABEL[phase]}
             </div>
           </div>
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
-          {state === 'idle' && (
-            <motion.button
-              onClick={() => { setState('work'); setTimeLeft(settings.workDuration * 60); startTimer(); }}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="btn-primary px-6 py-3 flex items-center gap-2"
-            >
-              <Play className="w-5 h-5" />
-              Start Focus
-            </motion.button>
-          )}
-
-          {isRunning && (
-            <motion.button
-              onClick={pauseTimer}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="btn-secondary px-6 py-3 flex items-center gap-2"
-            >
-              <Pause className="w-5 h-5" />
+        {/* Controls */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {running ? (
+            <button onClick={stop} className="btn btn-secondary" style={{ height: '36px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem' }}>
+              <Pause style={{ width: '14px', height: '14px' }} />
               Pause
-            </motion.button>
-          )}
-
-          {!isRunning && state !== 'idle' && (
-            <motion.button
-              onClick={startTimer}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="btn-primary px-6 py-3 flex items-center gap-2"
-            >
-              <Play className="w-5 h-5" />
-              Resume
-            </motion.button>
-          )}
-
-          {(state !== 'idle' || completedSessions > 0) && (
-            <motion.button
-              onClick={resetTimer}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="btn-secondary px-6 py-3 flex items-center gap-2"
-            >
-              <RotateCcw className="w-5 h-5" />
-              Reset
-            </motion.button>
+            </button>
+          ) : (
+            <button onClick={start} className="btn btn-primary" style={{ height: '36px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem', backgroundColor: color, borderColor: color }}>
+              <Play style={{ width: '14px', height: '14px' }} />
+              {timeLeft === phaseDuration(phase) ? (phase === 'work' ? 'Start focus' : 'Start break') : 'Resume'}
+            </button>
           )}
         </div>
 
-        <AnimatePresence mode="wait">
-          {completedSessions > 0 && (
+        {/* Session counter */}
+        <AnimatePresence>
+          {sessions > 0 && (
             <motion.div
-              key="streak"
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mt-6 flex items-center gap-2 text-text-muted"
+              exit={{ opacity: 0 }}
+              style={{
+                display: 'flex',
+                gap: '0.25rem',
+                alignItems: 'center',
+              }}
             >
-              <CheckCircleIcon className="w-5 h-5 text-success" />
-              <span className="text-body-sm">Today: {completedSessions} completed</span>
+              {Array.from({ length: Math.min(sessions, 8) }).map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--color-primary)',
+                  }}
+                  aria-hidden
+                />
+              ))}
+              <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)', marginLeft: '0.25rem' }}>
+                {sessions} session{sessions !== 1 ? 's' : ''}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>

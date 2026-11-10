@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, LayoutDashboard, Code, Briefcase, BookOpen, Heart, Gamepad2, Trash2, Copy, Check } from 'lucide-react';
+import {
+  X, Plus, LayoutDashboard, Code, Briefcase, BookOpen, Heart,
+  Gamepad2, Trash2, Copy, Check,
+} from 'lucide-react';
 import { cn } from '../../utils/helpers';
 import { useWorkspaceStore } from '../../stores/workspace.store';
 import type { Workspace } from '../../types';
@@ -13,39 +16,73 @@ interface WorkspaceSwitcherProps {
   onSelect: (id: string) => Promise<void>;
 }
 
-export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspaceId, onSelect }: WorkspaceSwitcherProps) {
+const ICON_MAP: Record<string, React.ComponentType<{ style?: React.CSSProperties; 'aria-hidden'?: boolean }>> = {
+  'layout-grid': LayoutDashboard,
+  code: Code,
+  briefcase: Briefcase,
+  'book-open': BookOpen,
+  heart: Heart,
+  gamepad2: Gamepad2,
+};
+
+const ICON_OPTIONS = [
+  { id: 'layout-grid', label: 'Dashboard', Icon: LayoutDashboard },
+  { id: 'code',         label: 'Code',      Icon: Code },
+  { id: 'briefcase',    label: 'Work',      Icon: Briefcase },
+  { id: 'book-open',    label: 'Study',     Icon: BookOpen },
+  { id: 'heart',        label: 'Personal',  Icon: Heart },
+  { id: 'gamepad2',     label: 'Gaming',    Icon: Gamepad2 },
+];
+
+export function WorkspaceSwitcher({
+  isOpen,
+  onClose,
+  workspaces,
+  activeWorkspaceId,
+  onSelect,
+}: WorkspaceSwitcherProps) {
   const [showCreate, setShowCreate] = useState(false);
-  const [newWorkspaceName, setNewWorkspaceName] = useState('');
-  const [newWorkspaceIcon, setNewWorkspaceIcon] = useState('layout-grid');
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('layout-grid');
   const { createWorkspace, deleteWorkspace, duplicateWorkspace } = useWorkspaceStore();
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    'layout-grid': LayoutDashboard,
-    'code': Code,
-    'briefcase': Briefcase,
-    'book-open': BookOpen,
-    'heart': Heart,
-    'gamepad2': Gamepad2,
-  };
+  /* Escape to close */
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [isOpen, onClose]);
 
-  const iconOptions = [
-    { id: 'layout-grid', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'code', label: 'Code', icon: Code },
-    { id: 'briefcase', label: 'Work', icon: Briefcase },
-    { id: 'book-open', label: 'Study', icon: BookOpen },
-    { id: 'heart', label: 'Personal', icon: Heart },
-    { id: 'gamepad2', label: 'Entertainment', icon: Gamepad2 },
-  ];
+  /* Reset on close */
+  useEffect(() => {
+    if (!isOpen) {
+      setShowCreate(false);
+      setNewName('');
+      setNewIcon('layout-grid');
+    }
+  }, [isOpen]);
+
+  /* Focus name input when create form opens */
+  useEffect(() => {
+    if (showCreate) {
+      const t = setTimeout(() => nameInputRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [showCreate]);
 
   if (!isOpen) return null;
 
   const handleCreate = () => {
-    const name = newWorkspaceName.trim() || 'New Workspace';
-    createWorkspace(name, newWorkspaceIcon).then((ws) => {
+    const name = newName.trim() || 'New Workspace';
+    createWorkspace(name, newIcon).then((ws) => {
       return onSelect(ws.id);
     }).finally(() => {
-      setNewWorkspaceName('');
-      setNewWorkspaceIcon('layout-grid');
+      setNewName('');
+      setNewIcon('layout-grid');
       setShowCreate(false);
       onClose();
     });
@@ -54,141 +91,315 @@ export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspace
   return (
     <AnimatePresence>
       <motion.div
+        key="ws-switcher-backdrop"
+        className="modal-backdrop"
+        style={{ zIndex: 200, alignItems: 'center' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        transition={{ duration: 0.15 }}
         onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Switch workspace"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="modal-panel"
+          style={{ width: '100%', maxWidth: '420px' }}
+          initial={{ opacity: 0, scale: 0.97, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="w-full max-w-md bg-surface-elevated border border-border rounded-2xl shadow-2xl overflow-hidden"
+          exit={{ opacity: 0, scale: 0.97, y: 8 }}
+          transition={{ duration: 0.18, ease: [0, 0, 0.2, 1] }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between p-6 border-b border-border">
-            <h2 className="text-heading-lg font-bold text-text">Switch Workspace</h2>
-            <button onClick={onClose} className="btn-icon p-2 text-text-muted hover:text-text">
-              <X className="w-5 h-5" />
+          {/* Header */}
+          <div className="modal-header">
+            <h2 className="modal-title">Switch Workspace</h2>
+            <button
+              onClick={onClose}
+              className="btn-icon"
+              aria-label="Close"
+              style={{ marginLeft: 'auto' }}
+            >
+              <X style={{ width: '16px', height: '16px' }} />
             </button>
           </div>
 
-          <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
+          {/* Workspace list */}
+          <div
+            className="scrollbar-thin"
+            style={{
+              maxHeight: '320px',
+              overflowY: 'auto',
+              padding: '0.5rem',
+            }}
+            role="listbox"
+            aria-label="Workspaces"
+          >
             {workspaces.map((ws) => {
-              const Icon = icons[ws.icon] || LayoutDashboard;
+              const Icon = ICON_MAP[ws.icon] || LayoutDashboard;
+              const isActive = ws.id === activeWorkspaceId;
               return (
-                <div
+                <WorkspaceRow
                   key={ws.id}
-                  onClick={() => {
-                    onSelect(ws.id).then(() => onClose());
+                  workspace={ws}
+                  isActive={isActive}
+                  Icon={Icon}
+                  canDelete={workspaces.length > 1}
+                  onSelect={() => onSelect(ws.id).then(() => onClose())}
+                  onDuplicate={() => duplicateWorkspace(ws.id)}
+                  onDelete={() => {
+                    deleteWorkspace(ws.id).catch(() => {});
+                    if (isActive && workspaces.length > 1) {
+                      const other = workspaces.find((w) => w.id !== ws.id);
+                      if (other) onSelect(other.id);
+                    }
                   }}
-                  className={cn(
-                    'w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 text-left cursor-pointer',
-                    ws.id === activeWorkspaceId
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-border-strong'
-                  )}
-                >
-                  <div className={cn(
-                    'p-3 rounded-xl flex-shrink-0',
-                    ws.id === activeWorkspaceId ? 'bg-primary/20 text-primary' : 'bg-surface text-text'
-                  )}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-text truncate">{ws.name}</h3>
-                    <p className="text-body-xs text-text-muted">
-                      {ws.widgets.length} widgets · {ws.collections.length} collections
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => {
-                        duplicateWorkspace(ws.id);
-                      }}
-                      className="btn-icon p-1.5 text-text-muted hover:text-text"
-                      title="Duplicate workspace"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </button>
-                    {workspaces.length > 1 && (
-                      <button
-                        onClick={() => {
-                          deleteWorkspace(ws.id).catch(() => {});
-                          if (activeWorkspaceId === ws.id && workspaces.length > 1) {
-                            const other = workspaces.find((w) => w.id !== ws.id);
-                            if (other) onSelect(other.id);
-                          }
-                        }}
-                        className="btn-icon p-1.5 text-text-muted hover:text-error"
-                        title="Delete workspace"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  {ws.id === activeWorkspaceId && (
-                    <Check className="w-5 h-5 text-primary flex-shrink-0" />
-                  )}
-                </div>
+                />
               );
             })}
           </div>
 
-          <div className="p-6 border-t border-border">
-            {!showCreate ? (
-              <button
-                onClick={() => setShowCreate(true)}
-                className="btn-secondary w-full justify-center"
-              >
-                <Plus className="w-4 h-4 mr-2" /> Create New Workspace
-              </button>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="label">Name</label>
-                  <input
-                    type="text"
-                    value={newWorkspaceName}
-                    onChange={(e) => setNewWorkspaceName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                    placeholder="e.g., Development, Work, Personal"
-                    className="input"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="label">Icon</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {iconOptions.map((ic) => (
-                      <button
-                        key={ic.id}
-                        onClick={() => setNewWorkspaceIcon(ic.id)}
-                        className={cn(
-                          'p-3 rounded-lg border-2 transition-all',
-                          newWorkspaceIcon === ic.id
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary'
-                        )}
-                        title={ic.label}
-                      >
-                        <ic.icon className="w-5 h-5 text-text" />
-                      </button>
-                    ))}
+          {/* Create form or button */}
+          <div
+            style={{
+              padding: '0.75rem',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <AnimatePresence mode="wait">
+              {!showCreate ? (
+                <motion.button
+                  key="create-btn"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowCreate(true)}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                  New Workspace
+                </motion.button>
+              ) : (
+                <motion.div
+                  key="create-form"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}
+                >
+                  {/* Name */}
+                  <div>
+                    <label className="label" htmlFor="new-workspace-name">Name</label>
+                    <input
+                      ref={nameInputRef}
+                      id="new-workspace-name"
+                      type="text"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleCreate();
+                        if (e.key === 'Escape') setShowCreate(false);
+                      }}
+                      placeholder="e.g., Development, Personal"
+                      className="input"
+                      style={{ height: '36px' }}
+                    />
                   </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
-                  <button onClick={handleCreate} className="btn-primary">
-                    <Plus className="w-4 h-4 mr-1" /> Create
-                  </button>
-                </div>
-              </div>
-            )}
+
+                  {/* Icon picker */}
+                  <div>
+                    <label className="label">Icon</label>
+                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                      {ICON_OPTIONS.map(({ id, label, Icon }) => (
+                        <button
+                          key={id}
+                          onClick={() => setNewIcon(id)}
+                          aria-label={label}
+                          aria-pressed={newIcon === id}
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: 'var(--radius-md)',
+                            border: `1px solid ${newIcon === id ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                            backgroundColor:
+                              newIcon === id
+                                ? 'var(--color-primary-muted)'
+                                : 'var(--color-surface)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 150ms ease',
+                          }}
+                        >
+                          <Icon
+                            style={{
+                              width: '14px',
+                              height: '14px',
+                              color:
+                                newIcon === id
+                                  ? 'var(--color-primary)'
+                                  : 'var(--color-text-secondary)',
+                            }}
+                            aria-hidden
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setShowCreate(false)}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button onClick={handleCreate} className="btn btn-primary btn-sm">
+                      <Plus style={{ width: '13px', height: '13px' }} />
+                      Create
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+/* Individual workspace row */
+function WorkspaceRow({
+  workspace,
+  isActive,
+  Icon,
+  canDelete,
+  onSelect,
+  onDuplicate,
+  onDelete,
+}: {
+  workspace: Workspace;
+  isActive: boolean;
+  Icon: React.ComponentType<{ style?: React.CSSProperties; 'aria-hidden'?: boolean }>;
+  canDelete: boolean;
+  onSelect: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      role="option"
+      aria-selected={isActive}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.625rem',
+        padding: '0.5rem 0.625rem',
+        borderRadius: 'var(--radius-md)',
+        cursor: 'pointer',
+        transition: 'background-color 150ms ease',
+        backgroundColor: isActive ? 'var(--color-primary-muted)' : 'transparent',
+      }}
+      onClick={onSelect}
+      onMouseEnter={(e) => {
+        if (!isActive)
+          (e.currentTarget as HTMLDivElement).style.backgroundColor =
+            'var(--color-surface-hover)';
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive)
+          (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
+      }}
+    >
+      {/* Icon */}
+      <div
+        style={{
+          width: '28px',
+          height: '28px',
+          borderRadius: 'var(--radius-sm)',
+          backgroundColor: isActive
+            ? 'var(--color-primary-muted)'
+            : 'var(--color-surface-secondary)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Icon
+          style={{
+            width: '14px',
+            height: '14px',
+            color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+          }}
+          aria-hidden
+        />
+      </div>
+
+      {/* Name + meta */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.8125rem',
+            fontWeight: isActive ? 600 : 400,
+            color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {workspace.name}
+        </div>
+        <div
+          style={{
+            fontSize: '0.6875rem',
+            color: 'var(--color-text-muted)',
+            lineHeight: 1.3,
+          }}
+        >
+          {workspace.widgets.length} widget{workspace.widgets.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      {/* Active check */}
+      {isActive && (
+        <Check
+          style={{ width: '14px', height: '14px', color: 'var(--color-primary)', flexShrink: 0 }}
+          aria-hidden
+        />
+      )}
+
+      {/* Actions — stop propagation so they don't trigger row click */}
+      <div
+        style={{ display: 'flex', gap: '0.125rem' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onDuplicate}
+          className="btn-icon"
+          aria-label={`Duplicate ${workspace.name}`}
+          title="Duplicate"
+          style={{ width: '26px', height: '26px' }}
+        >
+          <Copy style={{ width: '12px', height: '12px' }} />
+        </button>
+        {canDelete && (
+          <button
+            onClick={onDelete}
+            className="btn-icon"
+            aria-label={`Delete ${workspace.name}`}
+            title="Delete"
+            style={{ width: '26px', height: '26px', color: 'var(--color-error)' }}
+          >
+            <Trash2 style={{ width: '12px', height: '12px' }} />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
