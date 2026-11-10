@@ -37,6 +37,37 @@ class StorageService {
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingWrites: Map<string, { data: unknown; useSync: boolean }> = new Map();
 
+  // Fallback layer used when chrome.storage is unavailable (e.g. running as a
+  // plain website in dev). Reads/writes go to localStorage so every feature
+  // keeps working and persisting.
+  private get fallbackAvailable(): boolean {
+    try {
+      return typeof window !== 'undefined' && !!window.localStorage;
+    } catch {
+      return false;
+    }
+  }
+
+  private fallbackRead(key: string): unknown {
+    if (!this.fallbackAvailable) return null;
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error(`Failed to read fallback storage for ${key}:`, error);
+      return null;
+    }
+  }
+
+  private fallbackWrite(key: string, data: unknown): void {
+    if (!this.fallbackAvailable) return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.error(`Failed to write fallback storage for ${key}:`, error);
+    }
+  }
+
   async initialize(): Promise<void> {
     if (this.db) return;
     if (!this.initPromise) {
@@ -68,8 +99,9 @@ class StorageService {
 
     // Check if chrome.storage is available
     if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-      console.warn('chrome.storage.local not available, using cache only');
-      return null;
+      const fallback = this.fallbackRead(STORAGE_KEY) as StorageSchema | null;
+      if (fallback) this.cache.set(STORAGE_KEY, fallback);
+      return fallback;
     }
 
     try {
@@ -97,8 +129,9 @@ class StorageService {
 
     // Check if chrome.storage is available
     if (typeof chrome === 'undefined' || !chrome.storage?.sync) {
-      console.warn('chrome.storage.sync not available, using cache only');
-      return null;
+      const fallback = this.fallbackRead(SETTINGS_KEY) as GlobalSettings | null;
+      if (fallback) this.cache.set(SETTINGS_KEY, fallback);
+      return fallback;
     }
 
     try {
@@ -126,22 +159,27 @@ class StorageService {
   }
 
   private async flushWrites(): Promise<void> {
-    // Check if chrome.storage is available
-    if (typeof chrome === 'undefined' || !chrome.storage?.local || !chrome.storage?.sync) {
-      console.warn('chrome.storage not available, skipping writes');
-      return;
-    }
+    const chromeAvailable =
+      typeof chrome !== 'undefined' && !!chrome.storage?.local && !!chrome.storage?.sync;
 
     const writes = Array.from(this.pendingWrites.entries());
     this.pendingWrites.clear();
 
+    if (!chromeAvailable) {
+      // Fallback: persist to localStorage so data survives reloads outside the extension
+      writes.forEach(([key, { data }]) => this.fallbackWrite(key, data));
+      return;
+    }
+
     await Promise.all(
       writes.map(async ([key, { data, useSync }]) => {
         try {
-          if (useSync) {
+          if (useSync && chrome.storage?.sync) {
             await chrome.storage.sync.set({ [key]: data });
-          } else {
+          } else if (chrome.storage?.local) {
             await chrome.storage.local.set({ [key]: data });
+          } else {
+            this.fallbackWrite(key, data);
           }
         } catch (error) {
           console.error(`Failed to write ${key}:`, error);
@@ -236,14 +274,22 @@ class StorageService {
 
   async clearAll(): Promise<void> {
     await this.initialize();
-    if (!this.db) return;
 
-    await Promise.all([
-      this.db.clear('wallpapers'),
-      this.db.clear('backups'),
-      chrome.storage.local.clear(),
-      chrome.storage.sync.clear(),
-    ]);
+    const chromeAvailable = typeof chrome !== 'undefined' && !!chrome.storage?.local && !!chrome.storage?.sync;
+    const clears: Promise<unknown>[] = [];
+
+    if (this.db) {
+      clears.push(this.db.clear('wallpapers'), this.db.clear('backups'));
+    }
+    if (chromeAvailable) {
+      clears.push(chrome.storage.local.clear(), chrome.storage.sync.clear());
+    }
+    if (this.fallbackAvailable) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(SETTINGS_KEY);
+    }
+
+    await Promise.all(clears);
     this.cache.clear();
   }
 

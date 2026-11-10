@@ -20,6 +20,8 @@ export function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
   const { settings, updateAppearance, updateThemes, updateWallpapers, updateLayout, updateSearch, updateHidden, updateShortcuts, updateData, applyTheme, addCustomTheme, removeCustomTheme, toggleHiddenWidget, toggleHiddenCollection, exportSettings, importSettings, resetSettings } = useSettingsStore();
   const { workspaces, activeWorkspaceId, createWorkspace, updateWorkspace, deleteWorkspace, duplicateWorkspace, setActiveWorkspace, setDefaultWorkspace, exportWorkspace, importWorkspace } = useWorkspaceStore();
   const { hiddenWidgets, layout } = useDashboardStore();
+  const { hideWidget, showWidget } = useDashboardStore();
+  const activeWorkspaceWidgets = workspaces.find((ws) => ws.id === activeWorkspaceId)?.widgets ?? [];
 
   const sections = [
     { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -86,7 +88,7 @@ export function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
               {activeSection === 'wallpapers' && <WallpapersSection settings={settings.wallpapers} onUpdate={updateWallpapers} activeWorkspaceId={activeWorkspaceId} />}
               {activeSection === 'layout' && <LayoutSection settings={settings.layout} onUpdate={updateLayout} />}
               {activeSection === 'search' && <SearchSection settings={settings.search} onUpdate={updateSearch} />}
-              {activeSection === 'hidden' && <HiddenSection settings={settings.hidden} onUpdate={updateHidden} hiddenWidgets={hiddenWidgets} />}
+              {activeSection === 'hidden' && <HiddenSection settings={settings.hidden} onUpdate={updateHidden} hiddenWidgets={hiddenWidgets} widgets={activeWorkspaceWidgets} onHideInstance={hideWidget} onShowInstance={showWidget} />}
               {activeSection === 'shortcuts' && <ShortcutsSection settings={settings.shortcuts} onUpdate={updateShortcuts} />}
               {activeSection === 'data' && <DataSection settings={settings.data} onUpdate={updateData} exportSettings={exportSettings} importSettings={importSettings} resetSettings={resetSettings} />}
               {activeSection === 'workspaces' && <WorkspacesSection workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} onCreate={createWorkspace} onUpdate={updateWorkspace} onDelete={deleteWorkspace} onDuplicate={duplicateWorkspace} onSelect={setActiveWorkspace} onSetDefault={setDefaultWorkspace} onExport={exportWorkspace} onImport={importWorkspace} />}
@@ -332,10 +334,84 @@ function ThemesSection({
 
       <div>
         <h3 className="text-heading-md font-semibold text-text mb-4">Create Custom Theme</h3>
-        <button className="btn-secondary w-full">
-          <Plus className="w-4 h-4 mr-2" /> Create New Theme
+        <CreateCustomThemeForm baseThemes={themes} addCustomTheme={addCustomTheme} />
+      </div>
+    </div>
+  );
+}
+
+function CreateCustomThemeForm({
+  baseThemes,
+  addCustomTheme,
+}: {
+  baseThemes: Array<{ id: string; name: string }>;
+  addCustomTheme: (theme: import('../../types').CustomTheme) => Promise<void>;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [baseTheme, setBaseTheme] = useState(baseThemes[0]?.id || 'nebula');
+  const [accentColor, setAccentColor] = useState('#06b6d4');
+
+  const create = async () => {
+    if (!name.trim()) return;
+    await addCustomTheme({
+      id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: name.trim(),
+      baseTheme,
+      tokens: { colors: { primary: accentColor, accent: accentColor } },
+      createdAt: Date.now(),
+    });
+    setName('');
+    setAccentColor('#06b6d4');
+    setCreating(false);
+  };
+
+  if (!creating) {
+    return (
+      <button onClick={() => setCreating(true)} className="btn-secondary w-full">
+        <Plus className="w-4 h-4 mr-2" /> Create New Theme
+      </button>
+    );
+  }
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-xl space-y-4">
+      <div>
+        <label className="label">Theme Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., My Cyberpunk Theme"
+          className="input"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="label">Base Theme</label>
+        <select value={baseTheme} onChange={(e) => setBaseTheme(e.target.value)} className="input">
+          {baseThemes.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label">Accent Color</label>
+        <div className="flex items-center gap-3">
+          <input
+            type="color"
+            value={accentColor}
+            onChange={(e) => setAccentColor(e.target.value)}
+            className="w-12 h-10 rounded-lg cursor-pointer bg-transparent border border-border"
+          />
+          <span className="font-mono text-body-sm text-text">{accentColor}</span>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setCreating(false)} className="btn-secondary">Cancel</button>
+        <button onClick={create} className="btn-primary" disabled={!name.trim()}>
+          <Plus className="w-4 h-4 mr-1" /> Create
         </button>
-        <p className="text-body-sm text-text-muted mt-2 text-center">Custom theme builder coming soon</p>
       </div>
     </div>
   );
@@ -421,12 +497,14 @@ function WallpapersSection({
     setUploadFiles(null);
   };
 
-  const handleWallpaperSelect = async (wallpaper: { id: string; preview: string; name: string }) => {
+  const handleWallpaperSelect = async (wallpaper: { id: string; preview: string; name: string; type?: 'image' | 'video' }) => {
     const workspaceStore = useWorkspaceStore.getState();
     const activeWorkspaceId = workspaceStore.activeWorkspaceId;
     if (activeWorkspaceId) {
       const wallpaperConfig: import('../../types').WallpaperConfig = {
-        type: 'image' as const,
+        // Built-in gradient previews store a CSS gradient string, which must be
+        // rendered as a background, not an <img> src
+        type: wallpaper.type || (wallpaper.id.endsWith('-gradient') ? 'gradient' as const : 'image' as const),
         source: wallpaper.id.startsWith('upload-') ? 'upload' as const : 'gallery' as const,
         value: wallpaper.preview,
         brightness: settings.defaultBrightness,
@@ -841,12 +919,73 @@ function SearchSection({
 
       <div>
         <h3 className="text-heading-md font-semibold text-text mb-4">Time Zones</h3>
-        <p className="text-body-sm text-text-muted mb-4">Additional time zones coming soon</p>
-        <button className="btn-secondary">
-          <Plus className="w-4 h-4 mr-2" /> Add Time Zone
-        </button>
+        <p className="text-body-sm text-text-muted mb-4">Add time zones to the world clock.</p>
+        <div className="space-y-2">
+          {settings.timeZones.length === 0 && (
+            <p className="text-body-sm text-text-muted italic">No time zones added yet</p>
+          )}
+          {settings.timeZones.map((tz, index) => (
+            <div key={`${tz.name}-${tz.zone}`} className="flex items-center justify-between p-3 bg-surface border border-border rounded-lg">
+              <div>
+                <span className="font-medium text-text">{tz.name}</span>
+                <span className="ml-2 text-body-sm text-text-muted">({tz.zone})</span>
+              </div>
+              <button
+                onClick={() => {
+                  const updated = settings.timeZones.filter((_, i) => i !== index);
+                  onUpdate({ timeZones: updated });
+                }}
+                className="btn-icon p-1.5 text-text-muted hover:text-error"
+                title="Remove time zone"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <AddTimeZoneButton onAdd={(tz) => onUpdate({ timeZones: [...settings.timeZones, tz] })} />
       </div>
     </div>
+  );
+}
+
+function AddTimeZoneButton({ onAdd }: { onAdd: (tz: { id: string; name: string; zone: string; enabled: boolean }) => void }) {
+  const [adding, setAdding] = useState(false);
+
+  const commonTimeZones = [
+    'America/Los_Angeles', 'America/New_York', 'Europe/London', 'Europe/Paris',
+    'Europe/Berlin', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Tokyo',
+    'Australia/Sydney', 'Pacific/Auckland', 'UTC',
+  ];
+
+  return adding ? (
+    <div className="mt-3 p-4 bg-surface border border-border rounded-xl space-y-3">
+      <select
+        className="input"
+        autoFocus
+        onChange={(e) => {
+          if (!e.target.value) return;
+          const zone = e.target.value;
+          const name = new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: 'short' })
+            .formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value || zone.split('/').pop()!.replace(/_/g, ' ');
+          onAdd({ id: `tz-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name, zone, enabled: true });
+          setAdding(false);
+        }}
+        defaultValue=""
+      >
+        <option value="" disabled>Select a time zone…</option>
+        {commonTimeZones.map((zone) => (
+          <option key={zone} value={zone}>{zone.replace(/_/g, ' ')}</option>
+        ))}
+      </select>
+      <div className="flex justify-end">
+        <button onClick={() => setAdding(false)} className="btn-secondary text-body-sm">Cancel</button>
+      </div>
+    </div>
+  ) : (
+    <button onClick={() => setAdding(true)} className="btn-secondary mt-3">
+      <Plus className="w-4 h-4 mr-2" /> Add Time Zone
+    </button>
   );
 }
 
@@ -854,34 +993,67 @@ function HiddenSection({
   settings,
   onUpdate,
   hiddenWidgets,
+  widgets,
+  onHideInstance,
+  onShowInstance,
 }: {
   settings: import('../../types').HiddenSettings;
   onUpdate: (updates: Partial<import('../../types').HiddenSettings>) => Promise<void>;
   hiddenWidgets: Set<string>;
+  widgets: import('../../types').WidgetConfig[];
+  onHideInstance: (id: string) => void;
+  onShowInstance: (id: string) => void;
 }) {
   const allWidgets = getRegisteredWidgets();
   const categories = getWidgetCategories();
+  const definitionNames = new Map(allWidgets.map((w) => [w.type, w.name]));
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h3 className="text-heading-md font-semibold text-text mb-4">Hidden Widgets</h3>
-        <p className="text-body-sm text-text-muted mb-4">Toggle widget visibility</p>
+        <p className="text-body-sm text-text-muted mb-4">Manage widget visibility. Hidden widgets can be restored here.</p>
+
+        <div className="space-y-2 mb-6">
+          <h4 className="text-body-sm font-medium text-text">On this dashboard</h4>
+          {widgets.length === 0 && (
+            <p className="text-body-sm text-text-muted italic">No widgets on this workspace yet</p>
+          )}
+          {widgets.map((widget) => {
+            const isHidden = widget.hidden || hiddenWidgets.has(widget.id);
+            return (
+              <div key={widget.id} className="flex items-center justify-between p-3 bg-surface border border-border rounded-xl">
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-text">{definitionNames.get(widget.type) || widget.type}</span>
+                  {isHidden && <span className="badge text-xs bg-warning/20 text-warning">Hidden</span>}
+                </div>
+                <button
+                  onClick={() => (isHidden ? onShowInstance(widget.id) : onHideInstance(widget.id))}
+                  className={cn('btn-secondary text-body-sm', isHidden && 'text-primary')}
+                >
+                  {isHidden ? 'Show' : 'Hide'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
         <div className="space-y-2">
+          <h4 className="text-body-sm font-medium text-text mr-2">Hide entire widget types</h4>
           {categories.map((cat) => {
-            const widgets = allWidgets.filter((w) => w.category === cat);
+            const catWidgets = allWidgets.filter((w) => w.category === cat);
             return (
               <div key={cat} className="bg-surface border border-border rounded-xl p-4">
-                <h4 className="font-medium text-text mb-3 capitalize">{cat}</h4>
+                <h5 className="font-medium text-text mb-3 capitalize">{cat}</h5>
                 <div className="space-y-2">
-                  {widgets.map((widget) => {
-                    const isHidden = settings.hiddenWidgets.includes(widget.type);
+                  {catWidgets.map((widget) => {
+                    const isTypeHidden = settings.hiddenWidgets.includes(widget.type);
                     return (
                       <label key={widget.type} className="flex items-center justify-between cursor-pointer">
                         <span className="text-body-md text-text">{widget.name}</span>
                         <input
                           type="checkbox"
-                          checked={!isHidden}
+                          checked={!isTypeHidden}
                           onChange={(e) => {
                             const newHidden = e.target.checked
                               ? settings.hiddenWidgets.filter((id) => id !== widget.type)
@@ -926,24 +1098,30 @@ function ShortcutsSection({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [capturedKeys, setCapturedKeys] = useState<string>('');
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const handleKeyDown = (e: React.KeyboardEvent, shortcutId: string) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      setEditingId(null);
+      setCapturedKeys('');
+      return;
+    }
     const parts: string[] = [];
     if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
     if (e.shiftKey) parts.push('Shift');
     if (e.altKey) parts.push('Alt');
     if (e.key && e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Alt' && e.key !== 'Meta') {
-      parts.push(e.key.toUpperCase());
+      parts.push(e.key.length === 1 ? e.key.toLowerCase() : e.key.toUpperCase());
     }
+    // Require at least the key (plus one modifier for sensible combos)
+    if (parts.length === 0) return;
     const combo = parts.join('+');
     setCapturedKeys(combo);
-  };
-
-  const handleKeyUp = (e: React.KeyboardEvent, shortcutId: string) => {
-    e.preventDefault();
-    if (capturedKeys) {
-      const newShortcuts = { ...settings.shortcuts, [shortcutId]: capturedKeys };
+    // Commit immediately on a complete combo (key included)
+    if (parts.some((p) => !['Ctrl', 'Shift', 'Alt'].includes(p))) {
+      const newShortcuts = { ...settings.shortcuts, [shortcutId]: combo };
       onUpdate({ shortcuts: newShortcuts });
       setEditingId(null);
       setCapturedKeys('');
@@ -953,6 +1131,8 @@ function ShortcutsSection({
   const startEditing = (shortcutId: string) => {
     setEditingId(shortcutId);
     setCapturedKeys('');
+    // Move focus to the row so its keydown handler receives the keys
+    requestAnimationFrame(() => rowRefs.current[shortcutId]?.focus());
   };
 
   const resetShortcut = (shortcutId: string) => {
@@ -977,10 +1157,10 @@ function ShortcutsSection({
           return (
             <div
               key={shortcut.id}
+              ref={(el) => { rowRefs.current[shortcut.id] = el; }}
               className="flex items-center justify-between p-4 bg-surface border border-border rounded-xl transition-all"
               onClick={() => !isEditing && startEditing(shortcut.id)}
               onKeyDown={(e) => isEditing && handleKeyDown(e, shortcut.id)}
-              onKeyUp={(e) => isEditing && handleKeyUp(e, shortcut.id)}
               tabIndex={isEditing ? 0 : -1}
             >
               <div className="flex-1">
@@ -1160,22 +1340,26 @@ function DataSection({
   };
 
   const handleResetWorkspace = async () => {
-    if (!confirm('Reset current workspace? This cannot be undone.')) return;
+    if (!confirm('Reset current workspace? All its widgets, collections, links and tasks will be removed. This cannot be undone.')) return;
     const activeWorkspaceId = workspaceStore.activeWorkspaceId;
-    if (activeWorkspaceId) {
-      await workspaceStore.deleteWorkspace(activeWorkspaceId);
-    }
+    if (!activeWorkspaceId) return;
+    // Reset the workspace contents instead of deleting the workspace itself,
+    // so the dashboard always keeps at least one workspace
+    await workspaceStore.updateWorkspace(activeWorkspaceId, {
+      widgets: [],
+      collections: [],
+      quickLinks: [],
+      tasks: [],
+    });
+    await resetSettings();
+    window.location.reload();
   };
 
   const handleClearAllData = async () => {
     if (!confirm('Clear ALL local data? This cannot be undone and will remove all workspaces, settings, and tasks.')) return;
     if (!confirm('Are you absolutely sure?')) return;
-    await resetSettings();
-    const { workspaces } = workspaceStore;
-    for (const ws of workspaces) {
-      await workspaceStore.deleteWorkspace(ws.id);
-    }
-    // Reset will create a default workspace
+    await storageService.clearAll();
+    window.location.reload();
   };
 
   return (

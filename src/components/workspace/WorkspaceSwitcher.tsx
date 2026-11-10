@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, LayoutDashboard, Code, Briefcase, BookOpen, Heart, Gamepad2, Trash2, Copy, Download, Settings, Check } from 'lucide-react';
+import { X, Plus, LayoutDashboard, Code, Briefcase, BookOpen, Heart, Gamepad2, Trash2, Copy, Check } from 'lucide-react';
 import { cn } from '../../utils/helpers';
+import { useWorkspaceStore } from '../../stores/workspace.store';
 import type { Workspace } from '../../types';
 
 interface WorkspaceSwitcherProps {
@@ -15,6 +16,8 @@ interface WorkspaceSwitcherProps {
 export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspaceId, onSelect }: WorkspaceSwitcherProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [newWorkspaceIcon, setNewWorkspaceIcon] = useState('layout-grid');
+  const { createWorkspace, deleteWorkspace, duplicateWorkspace } = useWorkspaceStore();
 
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
     'layout-grid': LayoutDashboard,
@@ -25,7 +28,28 @@ export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspace
     'gamepad2': Gamepad2,
   };
 
+  const iconOptions = [
+    { id: 'layout-grid', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'code', label: 'Code', icon: Code },
+    { id: 'briefcase', label: 'Work', icon: Briefcase },
+    { id: 'book-open', label: 'Study', icon: BookOpen },
+    { id: 'heart', label: 'Personal', icon: Heart },
+    { id: 'gamepad2', label: 'Entertainment', icon: Gamepad2 },
+  ];
+
   if (!isOpen) return null;
+
+  const handleCreate = () => {
+    const name = newWorkspaceName.trim() || 'New Workspace';
+    createWorkspace(name, newWorkspaceIcon).then((ws) => {
+      return onSelect(ws.id);
+    }).finally(() => {
+      setNewWorkspaceName('');
+      setNewWorkspaceIcon('layout-grid');
+      setShowCreate(false);
+      onClose();
+    });
+  };
 
   return (
     <AnimatePresence>
@@ -54,11 +78,13 @@ export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspace
             {workspaces.map((ws) => {
               const Icon = icons[ws.icon] || LayoutDashboard;
               return (
-                <button
+                <div
                   key={ws.id}
-                  onClick={() => onSelect(ws.id)}
+                  onClick={() => {
+                    onSelect(ws.id).then(() => onClose());
+                  }}
                   className={cn(
-                    'w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 text-left',
+                    'w-full p-4 rounded-xl border-2 transition-all flex items-center gap-4 text-left cursor-pointer',
                     ws.id === activeWorkspaceId
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:border-border-strong'
@@ -76,21 +102,90 @@ export function WorkspaceSwitcher({ isOpen, onClose, workspaces, activeWorkspace
                       {ws.widgets.length} widgets · {ws.collections.length} collections
                     </p>
                   </div>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => {
+                        duplicateWorkspace(ws.id);
+                      }}
+                      className="btn-icon p-1.5 text-text-muted hover:text-text"
+                      title="Duplicate workspace"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    {workspaces.length > 1 && (
+                      <button
+                        onClick={() => {
+                          deleteWorkspace(ws.id).catch(() => {});
+                          if (activeWorkspaceId === ws.id && workspaces.length > 1) {
+                            const other = workspaces.find((w) => w.id !== ws.id);
+                            if (other) onSelect(other.id);
+                          }
+                        }}
+                        className="btn-icon p-1.5 text-text-muted hover:text-error"
+                        title="Delete workspace"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                   {ws.id === activeWorkspaceId && (
                     <Check className="w-5 h-5 text-primary flex-shrink-0" />
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
 
           <div className="p-6 border-t border-border">
-            <button
-              onClick={() => setShowCreate(true)}
-              className="btn-secondary w-full justify-center"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Create New Workspace
-            </button>
+            {!showCreate ? (
+              <button
+                onClick={() => setShowCreate(true)}
+                className="btn-secondary w-full justify-center"
+              >
+                <Plus className="w-4 h-4 mr-2" /> Create New Workspace
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="label">Name</label>
+                  <input
+                    type="text"
+                    value={newWorkspaceName}
+                    onChange={(e) => setNewWorkspaceName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                    placeholder="e.g., Development, Work, Personal"
+                    className="input"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="label">Icon</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {iconOptions.map((ic) => (
+                      <button
+                        key={ic.id}
+                        onClick={() => setNewWorkspaceIcon(ic.id)}
+                        className={cn(
+                          'p-3 rounded-lg border-2 transition-all',
+                          newWorkspaceIcon === ic.id
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary'
+                        )}
+                        title={ic.label}
+                      >
+                        <ic.icon className="w-5 h-5 text-text" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
+                  <button onClick={handleCreate} className="btn-primary">
+                    <Plus className="w-4 h-4 mr-1" /> Create
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>

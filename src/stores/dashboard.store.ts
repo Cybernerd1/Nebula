@@ -2,6 +2,21 @@ import { create } from 'zustand';
 import type { WidgetConfig, GridLayoutItem, WidgetDefinition } from '../types';
 import { generateId } from '../utils/helpers';
 import { useWorkspaceStore } from './workspace.store';
+import { useSettingsStore } from './settings.store';
+
+let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Compare layouts by content so we don't cascade identity-only updates
+// between the grid and the workspace store (prevents render loops)
+function layoutsEquivalent(a: GridLayoutItem[], b: GridLayoutItem[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item) => {
+    const other = b.find((l) => l.i === item.i);
+    return !!other &&
+      item.x === other.x && item.y === other.y &&
+      item.w === other.w && item.h === other.h;
+  });
+}
 
 interface DashboardState {
   isEditing: boolean;
@@ -13,6 +28,8 @@ interface DashboardState {
   setEditing: (editing: boolean) => void;
   setEditingWidget: (id: string | null) => void;
   setLayout: (layout: GridLayoutItem[]) => void;
+  rebuildLayout: (widgets: WidgetConfig[]) => void;
+  applyLayoutChange: (layout: readonly GridLayoutItem[]) => void;
   updateWidgetPosition: (id: string, x: number, y: number) => void;
   updateWidgetSize: (id: string, w: number, h: number) => void;
   addWidget: (type: string, position?: { x: number; y: number }) => WidgetConfig | null;
@@ -30,8 +47,7 @@ interface DashboardState {
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
-  isEditing: false,
-  editingWidgetId: null,
+  isEditing: false,  editingWidgetId: null,
   layout: [],
   hiddenWidgets: new Set(),
   widgetDefinitions: new Map(),
@@ -41,6 +57,62 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setEditingWidget: (id) => set({ editingWidgetId: id }),
 
   setLayout: (layout) => set({ layout }),
+
+  // Rebuild the RGL layout from the active workspace's widgets (used on init
+  // and whenever the workspace's widget list changes externally)
+  rebuildLayout: (widgets) => {
+    const layout: GridLayoutItem[] = widgets.map((w) => ({
+      i: w.id,
+      x: w.position.x,
+      y: w.position.y,
+      w: w.size.w,
+      h: w.size.h,
+      minW: w.minSize?.w,
+      minH: w.minSize?.h,
+      maxW: w.maxSize?.w,
+      maxH: w.maxSize?.h,
+      isDraggable: true,
+      isResizable: get().widgetDefinitions.get(w.type)?.canResize ?? true,
+      resizeHandles: ['se', 'e', 's'],
+    }));
+    if (layoutsEquivalent(get().layout, layout)) return;
+    set({
+      layout,
+      hiddenWidgets: new Set(widgets.filter((w) => w.hidden).map((w) => w.id)),
+    });
+  },
+
+  // Persist layout changes made by dragging/resizing back onto the widgets
+  applyLayoutChange: (layout) => {
+    const { activeWorkspaceId } = useWorkspaceStore.getState();
+    if (!activeWorkspaceId) return;
+
+    if (layoutsEquivalent(get().layout, [...layout])) return;
+
+    set({ layout: [...layout] });
+
+    // Persist widget positions/sizes on the workspace (debounced to avoid
+    // thrashing state while the user is actively dragging)
+    if (layoutPersistTimer) clearTimeout(layoutPersistTimer);
+    layoutPersistTimer = setTimeout(() => {
+      const { activeWorkspaceId: wsId } = useWorkspaceStore.getState();
+      if (!wsId) return;
+      const workspace = useWorkspaceStore.getState().workspaces.find((ws) => ws.id === wsId);
+      if (!workspace) return;
+
+      useWorkspaceStore.getState().updateWorkspace(wsId, {
+        widgets: workspace.widgets.map((w) => {
+          const item = layout.find((l) => l.i === w.id);
+          if (!item) return w;
+          return {
+            ...w,
+            position: { ...w.position, x: item.x, y: item.y },
+            size: { ...w.size, w: item.w, h: item.h },
+          };
+        }),
+      });
+    }, 400);
+  },
 
   updateWidgetPosition: (id, x, y) =>
     set((state) => ({
@@ -129,19 +201,41 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }));
   },
 
-  hideWidget: (id) =>
+  hideWidget: (id) => {
+    const { activeWorkspaceId } = useWorkspaceStore.getState();
+    const workspace = activeWorkspaceId
+      ? useWorkspaceStore.getState().workspaces.find((ws) => ws.id === activeWorkspaceId)
+      : null;
+    if (workspace) {
+      useWorkspaceStore.getState().updateWorkspace(activeWorkspaceId!, {
+        widgets: workspace.widgets.map((w) => (w.id === id ? { ...w, hidden: true } : w)),
+      });
+    }
+
     set((state) => {
       const newHidden = new Set(state.hiddenWidgets);
       newHidden.add(id);
       return { hiddenWidgets: newHidden };
-    }),
+    });
+  },
 
-  showWidget: (id) =>
+  showWidget: (id) => {
+    const { activeWorkspaceId } = useWorkspaceStore.getState();
+    const workspace = activeWorkspaceId
+      ? useWorkspaceStore.getState().workspaces.find((ws) => ws.id === activeWorkspaceId)
+      : null;
+    if (workspace) {
+      useWorkspaceStore.getState().updateWorkspace(activeWorkspaceId!, {
+        widgets: workspace.widgets.map((w) => (w.id === id ? { ...w, hidden: false } : w)),
+      });
+    }
+
     set((state) => {
       const newHidden = new Set(state.hiddenWidgets);
       newHidden.delete(id);
       return { hiddenWidgets: newHidden };
-    }),
+    });
+  },
 
   toggleWidgetVisibility: (id) =>
     set((state) => {
@@ -261,8 +355,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     const workspace = useWorkspaceStore.getState().workspaces.find((ws) => ws.id === activeWorkspaceId);
     if (!workspace) return [];
 
+    // Honor widget-level hidden flags (hide buttons) and theme-level hidden
+    // widget types configured in Settings -> Hidden Elements
+    const hiddenTypes = new Set(useSettingsStore.getState().settings.hidden.hiddenWidgets);
     const { hiddenWidgets } = get();
-    return workspace.widgets.filter((w) => !hiddenWidgets.has(w.id));
+    return workspace.widgets.filter((w) => !hiddenWidgets.has(w.id) && !w.hidden && !hiddenTypes.has(w.type));
   },
 
   registerWidgetDefinitions: (definitions) => {

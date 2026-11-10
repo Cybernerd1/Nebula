@@ -46,9 +46,12 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   },
   shortcuts: {
     shortcuts: {
-      'search': 'mod+k',
-      'edit': 'mod+e',
-      'workspace': 'mod+shift+w',
+      'search': 'Ctrl+K',
+      'edit': 'Ctrl+E',
+      'workspace': 'Ctrl+Shift+W',
+      'settings': 'Ctrl+,',
+      'addWidget': 'Ctrl+Shift+A',
+      'commandPalette': 'Ctrl+Shift+P',
     },
   },
   data: {
@@ -94,10 +97,23 @@ export const useSettingsStore = create<SettingsState>()(
         try {
           const stored = await storageService.getSettings();
           if (stored) {
-            set({ settings: { ...DEFAULT_SETTINGS, ...stored }, isLoading: false });
+            // Deep-merge shortcut defaults so new shortcuts added in an
+            // upgrade aren't missing from previously stored settings
+            const merged: GlobalSettings = {
+              ...DEFAULT_SETTINGS,
+              ...stored,
+              shortcuts: {
+                shortcuts: { ...DEFAULT_SETTINGS.shortcuts.shortcuts, ...(stored.shortcuts?.shortcuts || {}) },
+              },
+            };
+            set({ settings: merged, isLoading: false });
+            // Re-apply appearance (accent color, radius, effects, etc.) so
+            // they survive a reload, not just theme selection
+            applyAppearanceToDOM(merged.appearance);
             // Theme is applied by workspace store's initialize to respect per-workspace themes
           } else {
             set({ settings: DEFAULT_SETTINGS, isLoading: false });
+            applyAppearanceToDOM(DEFAULT_SETTINGS.appearance);
           }
         } catch (error) {
           set({ error: 'Failed to initialize settings', isLoading: false });
@@ -192,9 +208,12 @@ export const useSettingsStore = create<SettingsState>()(
           document.documentElement.removeAttribute('data-variant');
         }
 
-        // Apply custom token overrides if it's a custom theme
+        // Apply custom token overrides if it's a custom theme, otherwise
+        // clear any leftovers from a previously applied custom theme
         if (customTheme) {
           applyCustomThemeTokens(customTheme.tokens);
+        } else {
+          clearCustomThemeTokens();
         }
 
         // Re-apply appearance overrides (accent color, corner radius, etc.)
@@ -296,24 +315,41 @@ function applyAppearanceToDOM(appearance: AppearanceSettings) {
   }
 }
 
+const CUSTOM_TOKEN_PROPS: string[] = [];
+
 function applyCustomThemeTokens(tokens: Partial<import('../types').ThemeTokens>) {
+  // Clear previously applied custom tokens first so switching between
+  // custom themes (or back to built-ins) doesn't leave stale overrides
+  clearCustomThemeTokens();
   const root = document.documentElement;
   
   if (tokens.colors) {
     Object.entries(tokens.colors).forEach(([key, value]) => {
-      root.style.setProperty(`--color-${key}`, value);
+      const prop = `--color-${key}`;
+      root.style.setProperty(prop, value);
+      CUSTOM_TOKEN_PROPS.push(prop);
     });
   }
   
   if (tokens.fonts) {
     Object.entries(tokens.fonts).forEach(([key, value]) => {
-      root.style.setProperty(`--font-${key}`, value);
+      const prop = `--font-${key}`;
+      root.style.setProperty(prop, value);
+      CUSTOM_TOKEN_PROPS.push(prop);
     });
   }
   
   if (tokens.shadows) {
     Object.entries(tokens.shadows).forEach(([key, value]) => {
-      root.style.setProperty(`--shadow-${key}`, value);
+      const prop = `--shadow-${key}`;
+      root.style.setProperty(prop, value);
+      CUSTOM_TOKEN_PROPS.push(prop);
     });
   }
+}
+
+function clearCustomThemeTokens() {
+  const root = document.documentElement;
+  CUSTOM_TOKEN_PROPS.forEach((prop) => root.style.removeProperty(prop));
+  CUSTOM_TOKEN_PROPS.length = 0;
 }

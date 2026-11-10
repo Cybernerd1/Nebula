@@ -4,6 +4,7 @@ import { Globe, Settings, Plus, Trash2, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { WidgetProps } from '../../types';
 import type { WorldClockWidgetSettings } from '../schemas';
+import { useSettingsStore } from '../../stores/settings.store';
 
 interface TimeZoneConfig {
   id: string;
@@ -27,6 +28,12 @@ const COMMON_TIMEZONES = [
 
 export function WorldClockWidget({ config, onConfigChange, onRemove }: WidgetProps) {
   const settings = config.settings as WorldClockWidgetSettings;
+  const globalTimeZones = useSettingsStore((s) => s.settings.search.timeZones);
+  // Fall back to time zones configured globally (Settings -> Search & Time)
+  // when the widget has none of its own
+  const effectiveZones: TimeZoneConfig[] = settings.timeZones.length > 0
+    ? settings.timeZones
+    : globalTimeZones;
   const [times, setTimes] = useState<Record<string, { time: string; date: string }>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newZoneName, setNewZoneName] = useState('');
@@ -70,14 +77,23 @@ export function WorldClockWidget({ config, onConfigChange, onRemove }: WidgetPro
           date: settings.showDate ? formatDate(now, tz.zone) : '',
         };
       });
-      
+
+      const usingFallback = settings.timeZones.length === 0;
+      if (usingFallback) {
+        globalTimeZones.filter(tz => tz.enabled).forEach(tz => {
+          newTimes[tz.id] = {
+            time: formatTime(now, tz.zone, settings.format),
+            date: settings.showDate ? formatDate(now, tz.zone) : '',
+          };
+        });
+      }
       setTimes(newTimes);
     };
 
     updateTimes();
     const interval = setInterval(updateTimes, 1000);
     return () => clearInterval(interval);
-  }, [settings.timeZones, settings.format, settings.showDate, formatTime, formatDate]);
+  }, [settings.timeZones, settings.format, settings.showDate, formatTime, formatDate, globalTimeZones]);
 
   const addTimeZone = () => {
     if (!newZoneName.trim() || !newZoneValue.trim()) return;

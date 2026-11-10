@@ -53,15 +53,58 @@ function getConditionIcon(condition: string) {
   return Cloud;
 }
 
+// Open-Meteo WMO weather codes -> simple condition names
+function weatherCodeToCondition(code: number): string {
+  if (code === 0) return 'clear';
+  if (code <= 3) return 'clouds';
+  if (code === 45 || code === 48) return 'fog';
+  if (code >= 51 && code <= 57) return 'drizzle';
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+  if (code >= 71 && code <= 77) return 'snow';
+  if (code >= 85 && code <= 86) return 'snow';
+  if (code >= 95) return 'thunderstorm';
+  return 'clouds';
+}
+
+// Group OpenWeatherMap 3-hourly forecast entries into daily forecast items
+function buildDailyForecast(list: any[] | undefined, days: number, _source: string) {
+  if (!Array.isArray(list)) return [];
+  const daily = new Map<string, { tempMin: number; tempMax: number; condition: string; icon: string; dt: number }>();
+  list.forEach((entry: any) => {
+    const date = new Date(entry.dt * 1000);
+    const key = date.toISOString().slice(0, 10);
+    const main = entry.weather?.[0]?.main || 'Clouds';
+    const icon = entry.weather?.[0]?.icon || '03d';
+    const existing = daily.get(key);
+    if (!existing) {
+      daily.set(key, { tempMin: entry.main?.temp_min ?? entry.main?.temp, tempMax: entry.main?.temp_max ?? entry.main?.temp, condition: main, icon, dt: entry.dt });
+    } else {
+      existing.tempMin = Math.min(existing.tempMin, entry.main?.temp_min ?? entry.main?.temp ?? existing.tempMin);
+      existing.tempMax = Math.max(existing.tempMax, entry.main?.temp_max ?? entry.main?.temp ?? existing.tempMax);
+    }
+  });
+  return Array.from(daily.values())
+    .slice(0, days)
+    .map((d) => ({
+      date: new Date(d.dt * 1000).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      tempMin: Math.round(d.tempMin),
+      tempMax: Math.round(d.tempMax),
+      condition: d.condition,
+      icon: d.icon,
+    }));
+}
+
 export function WeatherWidget({ config, onConfigChange, onRemove }: WidgetProps) {
   const settings = config.settings as unknown as WeatherWidgetSettings;
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [locationDraft, setLocationDraft] = useState(settings.location || '');
 
   const fetchWeather = useCallback(async () => {
-    if (!settings.apiKey || !settings.location) {
-      setError('Please configure API key and location');
+    if (!settings.location) {
+      setError('Please enter a location');
       setLoading(false);
       return;
     }
@@ -70,41 +113,83 @@ export function WeatherWidget({ config, onConfigChange, onRemove }: WidgetProps)
     setError(null);
 
     try {
-      const geoResponse = await fetch(
-        `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(settings.location)}&limit=1&appid=${settings.apiKey}`
-      );
-      const geoData = await geoResponse.json();
-      
-      if (!geoData.length) {
-        throw new Error('Location not found');
+      if (settings.apiKey) {
+        // OpenWeatherMap path (free tier): geocoding + 3-hourly forecast endpoint
+        const geoResponse = await fetch(
+          `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(settings.location)}&limit=1&appid=${settings.apiKey}`
+        );
+        if (!geoResponse.ok) throw new Error('Location lookup failed');
+        const geoData = await geoResponse.json();
+
+        if (!geoData.length) {
+          throw new Error('Location not found');
+        }
+
+        const { lat, lon, name, country } = geoData[0];
+
+        const weatherResponse = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=${settings.units}&appid=${settings.apiKey}`
+        );
+        if (!weatherResponse.ok) throw new Error('Weather request failed');
+        const weatherData = await weatherResponse.json();
+
+        const forecastResponse = await fetch(
+          `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=${settings.units}&appid=${settings.apiKey}`
+        );
+        const forecastData = forecastResponse.ok ? await forecastResponse.json() : null;
+        const forecast = buildDailyForecast(forecastData?.list, settings.forecastDays, 'owm');
+
+        setWeather({
+          current: {
+            temp: Math.round(weatherData.main.temp),
+            condition: weatherData.weather[0].main,
+            description: weatherData.weather[0].description,
+            humidity: weatherData.main.humidity,
+            windSpeed: Math.round(weatherData.wind?.speed ?? 0),
+            feelsLike: Math.round(weatherData.main.feels_like),
+            icon: weatherData.weather[0].icon,
+          },
+          forecast,
+          location: `${name}, ${country}`,
+        });
+      } else {
+        // Open-Meteo path: no API key required, works out of the box
+        const geoResponse = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(settings.location)}&count=1&language=en&format=json`
+        );
+        if (!geoResponse.ok) throw new Error('Location lookup failed');
+        const geoData = await geoResponse.json();
+        const geo = geoData?.results?.[0];
+        if (!geo) throw new Error('Location not found');
+
+        const unitParam = settings.units === 'imperial' ? '&temperature_unit=fahrenheit&wind_speed_unit=mph' : '';
+        const weatherResponse = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=${Math.max(settings.forecastDays, 3)}${unitParam}`
+        );
+        if (!weatherResponse.ok) throw new Error('Weather request failed');
+        const data = await weatherResponse.json();
+
+        const currentCondition = weatherCodeToCondition(data.current?.weather_code ?? 0);
+        setWeather({
+          current: {
+            temp: Math.round(data.current.temperature_2m),
+            condition: currentCondition,
+            description: currentCondition,
+            humidity: data.current.relative_humidity_2m ?? 0,
+            windSpeed: Math.round(data.current.wind_speed_10m ?? 0),
+            feelsLike: Math.round(data.current.apparent_temperature ?? data.current.temperature_2m),
+            icon: currentCondition,
+          },
+          forecast: data.daily.time.slice(0, settings.forecastDays).map((date: string, i: number) => ({
+            date: new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            tempMin: Math.round(data.daily.temperature_2m_min[i]),
+            tempMax: Math.round(data.daily.temperature_2m_max[i]),
+            condition: weatherCodeToCondition(data.daily.weather_code[i]),
+            icon: weatherCodeToCondition(data.daily.weather_code[i]),
+          })),
+          location: `${geo.name}, ${geo.country_code || ''}`.trim(),
+        });
       }
-
-      const { lat, lon, name, country } = geoData[0];
-      
-      const weatherResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/onecall?lat=${lat}&lon=${lon}&units=${settings.units}&exclude=minutely,hourly,alerts&appid=${settings.apiKey}`
-      );
-      const weatherData = await weatherResponse.json();
-
-      setWeather({
-        current: {
-          temp: Math.round(weatherData.current.temp),
-          condition: weatherData.current.weather[0].main,
-          description: weatherData.current.weather[0].description,
-          humidity: weatherData.current.humidity,
-          windSpeed: Math.round(weatherData.current.wind_speed),
-          feelsLike: Math.round(weatherData.current.feels_like),
-          icon: weatherData.current.weather[0].icon,
-        },
-        forecast: weatherData.daily.slice(0, settings.forecastDays).map((day: any) => ({
-          date: new Date(day.dt * 1000).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-          tempMin: Math.round(day.temp.min),
-          tempMax: Math.round(day.temp.max),
-          condition: day.weather[0].main,
-          icon: day.weather[0].icon,
-        })),
-        location: `${name}, ${country}`,
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch weather');
     } finally {
@@ -123,7 +208,13 @@ export function WeatherWidget({ config, onConfigChange, onRemove }: WidgetProps)
   const handleRefresh = () => fetchWeather();
 
   const handleConfigClick = () => {
-    // Open config modal - handled by parent
+    setLocationDraft(settings.location || '');
+    setShowConfig((v) => !v);
+  };
+
+  const applyConfig = () => {
+    onConfigChange({ ...settings, location: locationDraft.trim() || settings.location });
+    setShowConfig(false);
   };
 
   return (
@@ -139,6 +230,57 @@ export function WeatherWidget({ config, onConfigChange, onRemove }: WidgetProps)
           </button>
         </div>
       </div>
+
+      {showConfig && (
+        <div className="p-4 bg-surface border-b border-border space-y-3">
+          <div>
+            <label className="label">Location</label>
+            <input
+              type="text"
+              value={locationDraft}
+              onChange={(e) => setLocationDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyConfig()}
+              placeholder="e.g., San Francisco, London, Tokyo"
+              className="input"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="label">Units</label>
+            <div className="flex gap-2">
+              {(['metric', 'imperial'] as const).map((unit) => (
+                <button
+                  key={unit}
+                  onClick={() => onConfigChange({ ...settings, units: unit })}
+                  className={cn(
+                    'flex-1 py-1.5 px-3 rounded-lg border transition-all text-body-sm',
+                    settings.units === unit
+                      ? 'bg-primary border-primary text-white'
+                      : 'bg-surface border-border text-text hover:bg-surface-hover'
+                  )}
+                >
+                  {unit === 'metric' ? '°C' : '°F'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="showForecastToggle"
+              checked={settings.showForecast}
+              onChange={(e) => onConfigChange({ ...settings, showForecast: e.target.checked })}
+              className="w-4 h-4 accent-primary"
+            />
+            <label htmlFor="showForecastToggle" className="text-body-sm text-text">Show forecast</label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={applyConfig} className="btn-primary text-body-sm">
+              <Check className="w-3.5 h-3.5 mr-1" /> Save
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col p-4">
         {error && (
@@ -183,7 +325,7 @@ export function WeatherWidget({ config, onConfigChange, onRemove }: WidgetProps)
                   <Wind className="w-5 h-5 text-text-muted" />
                   <div>
                     <div className="text-body-xs text-text-muted">Wind</div>
-                    <div className="font-medium text-text">{weather.current.windSpeed} {settings.units === 'metric' ? 'm/s' : 'mph'}</div>
+                    <div className="font-medium text-text">{weather.current.windSpeed} {settings.units === 'metric' ? 'km/h' : 'mph'}</div>
                   </div>
                 </div>
               </div>

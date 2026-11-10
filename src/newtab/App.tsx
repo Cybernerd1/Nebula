@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Settings, MoreHorizontal, ChevronDown, Plus, Grid, Check, Code, Briefcase, BookOpen, Heart, Gamepad2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';import { LayoutDashboard, Settings, MoreHorizontal, ChevronDown, Plus, Grid, Check, Code, Briefcase, BookOpen, Heart, Gamepad2 } from 'lucide-react';
 import { cn } from '../utils/helpers';
 import { useWorkspaceStore } from '../stores/workspace.store';
 import { useDashboardStore } from '../stores/dashboard.store';
@@ -26,10 +25,11 @@ import { DateWidget } from '../widgets/components/DateWidget';
 import { AddWidgetModal } from '../components/modals/AddWidgetModal';
 import { SettingsDrawer } from '../components/settings/SettingsDrawer';
 import { WorkspaceSwitcher } from '../components/workspace/WorkspaceSwitcher';
-import { Responsive } from 'react-grid-layout';
+import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import { storageService } from '../services/storage';
+import { useTaskStore } from '../stores/task.store';
 
-const ResponsiveReactGridLayout = Responsive;
+const ResponsiveReactGridLayout = WidthProvider(Responsive);
 
 function WallpaperBackground({ wallpaper, settings }: { wallpaper?: import('../types').WallpaperConfig; settings: import('../types').WallpaperSettings }) {
   if (!wallpaper || wallpaper.type === 'none') {
@@ -203,8 +203,8 @@ export function App() {
 
 function Dashboard() {
   const { workspaces, activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore();
-  const { isEditing, setEditing, layout, getVisibleWidgets, getWidgetConfig, getWidgetDefinition } = useDashboardStore();
-  const { settings } = useSettingsStore();
+  const { isEditing, setEditing, layout, rebuildLayout, applyLayoutChange, getVisibleWidgets, getWidgetConfig, getWidgetDefinition } = useDashboardStore();
+  const { settings, updateHidden } = useSettingsStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showAddWidget, setShowAddWidget] = useState(false);
   const [showWorkspaceSwitcher, setShowWorkspaceSwitcher] = useState(false);
@@ -212,10 +212,75 @@ function Dashboard() {
   const activeWorkspace = workspaces.find((ws) => ws.id === activeWorkspaceId);
   const visibleWidgets = getVisibleWidgets();
 
+  // Keep the grid layout in sync with the active workspace's widgets
+  useEffect(() => {
+    if (activeWorkspace) {
+      rebuildLayout(activeWorkspace.widgets);
+    }
+  }, [activeWorkspace, rebuildLayout]);
+
+  // Hydrate the task store from the active workspace (todo widget, stats)
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      useTaskStore.getState().initialize(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId]);
+
+  // Global keyboard shortcuts, honoring user-configured combos from settings
+  useEffect(() => {
+    const shortcuts = settings.shortcuts.shortcuts;
+    const match = (combo: string, e: KeyboardEvent) => {
+      if (!combo) return false;
+      const parts = combo.toLowerCase().split('+');
+      const key = parts[parts.length - 1];
+      const needCtrl = parts.includes('ctrl') || parts.includes('mod');
+      const needShift = parts.includes('shift');
+      const needAlt = parts.includes('alt');
+      const keyEvent = key === ',' ? e.key === ',' : e.key.toLowerCase() === key;
+      return (
+        keyEvent &&
+        needCtrl === (e.ctrlKey || e.metaKey) &&
+        needShift === e.shiftKey &&
+        needAlt === e.altKey
+      );
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable;
+      if (typing && !(e.ctrlKey || e.metaKey || e.key === 'Escape')) return;
+
+      if (match(shortcuts['search'] || '', e)) {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('[data-nebula-search-input]')?.focus();
+      } else if (match(shortcuts['edit'] || '', e)) {
+        e.preventDefault();
+        setEditing(!isEditing);
+      } else if (match(shortcuts['workspace'] || '', e)) {
+        e.preventDefault();
+        setShowWorkspaceSwitcher((v) => !v);
+      } else if (match(shortcuts['addWidget'] || '', e)) {
+        e.preventDefault();
+        setShowAddWidget(true);
+      } else if (match(shortcuts['settings'] || '', e)) {
+        e.preventDefault();
+        setShowSettings((v) => !v);
+      } else if (e.key === 'Escape') {
+        if (showAddWidget) setShowAddWidget(false);
+        else if (showWorkspaceSwitcher) setShowWorkspaceSwitcher(false);
+        else if (showSettings) setShowSettings(false);
+        else if (isEditing) setEditing(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [settings.shortcuts.shortcuts, isEditing, showSettings, showAddWidget, showWorkspaceSwitcher, setEditing]);
+
   if (!activeWorkspace) return null;
 
   const handleLayoutChange = (newLayout: readonly import('../types').GridLayoutItem[]) => {
-    // Layout changes are handled by the dashboard store
+    applyLayoutChange(newLayout);
   };
 
   const WidgetComponentMap: Record<string, React.ComponentType<any>> = {
@@ -238,6 +303,11 @@ function Dashboard() {
     productivityStats: ProductivityStatsWidget,
   };
 
+  // Global layout settings act as defaults; workspace settings take precedence
+  const gridColumns = activeWorkspace.settings.gridColumns || settings.layout.gridColumns;
+  const gridRowHeight = activeWorkspace.settings.gridRowHeight || settings.layout.gridRowHeight;
+  const widgetGap = activeWorkspace.settings.widgetGap || settings.layout.widgetSpacing;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header
@@ -249,7 +319,7 @@ function Dashboard() {
         isEditing={isEditing}
         onOpenSettings={() => setShowSettings(true)}
         onOpenAddWidget={() => setShowAddWidget(true)}
-        onOpenWorkspaceSwitcher={() => setShowWorkspaceSwitcher(true)}
+        onOpenWorkspaceSwitcher={() => setShowWorkspaceSwitcher(!showWorkspaceSwitcher)}
       />
 
       <main className="flex-1 overflow-hidden relative">
@@ -258,11 +328,10 @@ function Dashboard() {
           className="layout"
           layouts={{ lg: layout }}
           breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: activeWorkspace.settings.gridColumns, md: 10, sm: 6, xs: 4, xxs: 2 }}
-          rowHeight={activeWorkspace.settings.gridRowHeight}
-          width={1200}
-          margin={[16, 16]}
-          containerPadding={[16, 16]}
+          cols={{ lg: gridColumns, md: 10, sm: 6, xs: 4, xxs: 2 }}
+          rowHeight={gridRowHeight}
+          margin={[widgetGap, widgetGap]}
+          containerPadding={[widgetGap, widgetGap]}
           onLayoutChange={handleLayoutChange}
         >
           {visibleWidgets.map((widget) => {
@@ -271,7 +340,7 @@ function Dashboard() {
             if (!WidgetComponent || !definition) return null;
 
             return (
-              <div key={widget.id} data-grid={widget.id}>
+              <div key={widget.id} className="group">
                 <WidgetWrapper
                   widget={widget}
                   definition={definition}
@@ -352,13 +421,13 @@ function WidgetWrapper({
   Component: React.ComponentType<any>;
   isEditing: boolean;
 }) {
-  const { updateWidgetSettings, removeWidget, hideWidget } = useDashboardStore();
+  const { updateWidgetSettings, removeWidget, hideWidget, showWidget } = useDashboardStore();
 
   return (
     <div className="h-full w-full">
       <Component
         config={widget}
-        onConfigChange={updateWidgetSettings}
+        onConfigChange={(patch: Record<string, unknown>) => updateWidgetSettings(widget.id, patch)}
         onRemove={() => removeWidget(widget.id)}
         onHide={() => hideWidget(widget.id)}
         isEditing={isEditing}
@@ -487,22 +556,33 @@ function Footer({
   widgetCount: number;
 }) {
   const { workspaces } = useWorkspaceStore();
+  const [storageUsed, setStorageUsed] = useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+    storageService.getStorageUsage().then(({ used }) => {
+      if (mounted && used > 0) {
+        const mb = used / (1024 * 1024);
+        setStorageUsed(mb < 0.01 ? '< 0.01 MB' : `${mb.toFixed(2)} MB`);
+      }
+    });
+    return () => { mounted = false; };
+  }, [widgetCount]);
   return (
     <footer className="border-t border-border px-6 py-3 bg-surface/50 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 text-body-xs text-text-muted">
         <div className="flex items-center gap-4">
-          <span>Storage: <span className="text-text">~2.4 MB</span></span>
-          <span className="hidden sm:inline">|</span>
+          {storageUsed && (
+            <>
+              <span>Storage: <span className="text-text">{storageUsed}</span></span>
+              <span className="hidden sm:inline">|</span>
+            </>
+          )}
           <span>Workspaces: <span className="text-text">{workspaces.length}</span></span>
           <span className="hidden sm:inline">|</span>
           <span>Active Widgets: <span className="text-text">{widgetCount}</span></span>
         </div>
         <div className="flex items-center gap-4">
-          <a href="#" className="hover:text-text transition-colors">Support</a>
-          <span className="hidden sm:inline">|</span>
-          <a href="#" className="hover:text-text transition-colors">Feedback</a>
-          <span className="hidden sm:inline">|</span>
           <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-text">Ctrl+K</kbd> Search
           <span className="hidden sm:inline">|</span>
           <kbd className="px-1.5 py-0.5 bg-surface border border-border rounded text-text">Ctrl+E</kbd> Edit

@@ -23,21 +23,26 @@ export function QuoteWidget({
       const randomQuote = settings.customQuotes[Math.floor(Math.random() * settings.customQuotes.length)];
       setQuote(randomQuote);
     } else {
+      // Try a live quote source first (ZenQuotes is CORS-friendly);
+      // fall back to the built-in quotes when offline/unavailable
       try {
-        const response = await fetch('https://api.quotable.io/random');
+        const response = await fetch('https://zenquotes.io/api/random');
         if (response.ok) {
           const data = await response.json();
-          setQuote({
-            id: `api-${Date.now()}`,
-            text: data.content,
-            author: data.author,
-            favorite: false,
-            source: 'api',
-            createdAt: Date.now(),
-          });
-        } else {
-          setQuote(DEFAULT_QUOTES[Math.floor(Math.random() * DEFAULT_QUOTES.length)] as Quote);
+          const entry = Array.isArray(data) ? data[0] : null;
+          if (entry?.q) {
+            setQuote({
+              id: `api-${Date.now()}`,
+              text: entry.q,
+              author: entry.a || 'Unknown',
+              favorite: false,
+              source: 'api',
+              createdAt: Date.now(),
+            });
+            return;
+          }
         }
+        setQuote(DEFAULT_QUOTES[Math.floor(Math.random() * DEFAULT_QUOTES.length)] as Quote);
       } catch {
         setQuote(DEFAULT_QUOTES[Math.floor(Math.random() * DEFAULT_QUOTES.length)] as Quote);
       }
